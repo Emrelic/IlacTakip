@@ -1,0 +1,14 @@
+C:\Users\ikizler1\AndroidStudioProjects\IlacTakip\obj\Debug\net8.0-windows\MedulaOtomasyon.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\ikizler1\AndroidStudioProjects\IlacTakip\obj\Debug\net8.0-windows\MedulaOtomasyon.AssemblyInfoInputs.cache
+C:\Users\ikizler1\AndroidStudioProjects\IlacTakip\obj\Debug\net8.0-windows\MedulaOtomasyon.AssemblyInfo.cs
+C:\Users\ikizler1\AndroidStudioProjects\IlacTakip\obj\Debug\net8.0-windows\MedulaOtomasyon.csproj.CoreCompileInputs.cache
+C:\Users\ikizler1\AndroidStudioProjects\IlacTakip\bin\Debug\net8.0-windows\MedulaOtomasyon.exe
+C:\Users\ikizler1\AndroidStudioProjects\IlacTakip\bin\Debug\net8.0-windows\MedulaOtomasyon.deps.json
+C:\Users\ikizler1\AndroidStudioProjects\IlacTakip\bin\Debug\net8.0-windows\MedulaOtomasyon.runtimeconfig.json
+C:\Users\ikizler1\AndroidStudioProjects\IlacTakip\bin\Debug\net8.0-windows\MedulaOtomasyon.dll
+C:\Users\ikizler1\AndroidStudioProjects\IlacTakip\bin\Debug\net8.0-windows\MedulaOtomasyon.pdb
+C:\Users\ikizler1\AndroidStudioProjects\IlacTakip\obj\Debug\net8.0-windows\MedulaOtomasyon.dll
+C:\Users\ikizler1\AndroidStudioProjects\IlacTakip\obj\Debug\net8.0-windows\refint\MedulaOtomasyon.dll
+C:\Users\ikizler1\AndroidStudioProjects\IlacTakip\obj\Debug\net8.0-windows\MedulaOtomasyon.pdb
+C:\Users\ikizler1\AndroidStudioProjects\IlacTakip\obj\Debug\net8.0-windows\MedulaOtomasyon.genruntimeconfig.cache
+C:\Users\ikizler1\AndroidStudioProjects\IlacTakip\obj\Debug\net8.0-windows\ref\MedulaOtomasyon.dll

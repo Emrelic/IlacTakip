@@ -1,0 +1,68 @@
+How found:	Mouse move (991,11)
+	hwnd=0x00000000000C0932 32bit class="WindowsForms10.Window.8.app.0.338574f_r8_ad1" style=0x16CB0000 ex=0x50100
+Name:	"Kapat"
+ControlType:	UIA_ButtonControlTypeId (0xC350)
+LocalizedControlType:	"düğme"
+BoundingRectangle:	{l:987 t:7 r:1011 b:31}
+IsEnabled:	true
+IsOffscreen:	false
+IsKeyboardFocusable:	false
+HasKeyboardFocus:	false
+ProcessId:	7096
+RuntimeId:	[2A.C0932.3.80000001.C0932.FFFFFFFE.5]
+AutomationId:	"Close"
+IsContentElement:	false
+ProviderDescription:	"[pid:19856,providerId:0x0 Annotation:Microsoft: Annotation Proxy (unmanaged:uiautomationcore.dll); Main(parent link):Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]"
+IsPassword:	false
+IsDialog:	false
+LegacyIAccessible.ChildId:	5
+LegacyIAccessible.DefaultAction:	"Basın"
+LegacyIAccessible.Description:	"Pencereyi kapatır"
+LegacyIAccessible.Name:	"Kapat"
+LegacyIAccessible.Role:	düğme (0x2B)
+LegacyIAccessible.State:	normal (0x0)
+IsAnnotationPatternAvailable:	false
+IsDragPatternAvailable:	false
+IsDockPatternAvailable:	false
+IsDropTargetPatternAvailable:	false
+IsExpandCollapsePatternAvailable:	false
+IsGridItemPatternAvailable:	false
+IsGridPatternAvailable:	false
+IsInvokePatternAvailable:	true
+IsItemContainerPatternAvailable:	false
+IsLegacyIAccessiblePatternAvailable:	true
+IsMultipleViewPatternAvailable:	false
+IsObjectModelPatternAvailable:	false
+IsRangeValuePatternAvailable:	false
+IsScrollItemPatternAvailable:	false
+IsScrollPatternAvailable:	false
+IsSelectionItemPatternAvailable:	false
+IsSelectionPatternAvailable:	false
+IsSpreadsheetItemPatternAvailable:	false
+IsSpreadsheetPatternAvailable:	false
+IsStylesPatternAvailable:	false
+IsSynchronizedInputPatternAvailable:	false
+IsTableItemPatternAvailable:	false
+IsTablePatternAvailable:	false
+IsTextChildPatternAvailable:	false
+IsTextEditPatternAvailable:	false
+IsTextPatternAvailable:	false
+IsTextPattern2Available:	false
+IsTogglePatternAvailable:	false
+IsTransformPatternAvailable:	false
+IsTransform2PatternAvailable:	false
+IsValuePatternAvailable:	false
+IsVirtualizedItemPatternAvailable:	false
+IsWindowPatternAvailable:	false
+IsCustomNavigationPatternAvailable:	false
+IsSelectionPattern2Available:	false
+FirstChild:	[null]
+LastChild:	[null]
+Next:	[null]
+Previous:	"Ekranı Kapla" düğme
+Other Props:	Object has no additional properties
+Children:	Container has no children
+Ancestors:	(null) başlık çubuğu
+	"TAMAM KARTAL İlaç Listesi" pencere
+	"Masaüstü 1" bölme
+	[ No Parent ]

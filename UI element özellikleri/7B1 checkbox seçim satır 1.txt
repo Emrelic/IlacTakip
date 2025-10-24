@@ -1,0 +1,74 @@
+How found:	Mouse move (43,148)
+	hwnd=0x00000000003302C4 32bit class="WindowsForms10.Window.8.app.0.338574f_r8_ad1" style=0x56010000 ex=0x0
+Name:	"Seçim satır 1"
+ControlType:	UIA_DataItemControlTypeId (0xC36D)
+LocalizedControlType:	"öğe"
+BoundingRectangle:	{l:22 t:137 r:60 b:157}
+IsEnabled:	true
+IsOffscreen:	false
+IsKeyboardFocusable:	true
+HasKeyboardFocus:	true
+AccessKey:	""
+ProcessId:	7096
+ProviderDescription:	"[pid:7096,providerId:0x0 Main(parent link):Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]"
+IsPassword:	false
+HelpText:	""
+IsDialog:	false
+LegacyIAccessible.ChildId:	0
+LegacyIAccessible.DefaultAction:	"Düzenle"
+LegacyIAccessible.Description:	""
+LegacyIAccessible.Help:	""
+LegacyIAccessible.KeyboardShortcut:	""
+LegacyIAccessible.Name:	"Seçim satır 1"
+LegacyIAccessible.Role:	hücre (0x1D)
+LegacyIAccessible.State:	seçili,odaklanmış,odaklanabilir,seçilebilir (0x300006)
+LegacyIAccessible.Value:	"Seçili"
+Value.IsReadOnly:	false
+Value.Value:	"Seçili"
+IsAnnotationPatternAvailable:	false
+IsDragPatternAvailable:	false
+IsDockPatternAvailable:	false
+IsDropTargetPatternAvailable:	false
+IsExpandCollapsePatternAvailable:	false
+IsGridItemPatternAvailable:	false
+IsGridPatternAvailable:	false
+IsInvokePatternAvailable:	true
+IsItemContainerPatternAvailable:	false
+IsLegacyIAccessiblePatternAvailable:	true
+IsMultipleViewPatternAvailable:	false
+IsObjectModelPatternAvailable:	false
+IsRangeValuePatternAvailable:	false
+IsScrollItemPatternAvailable:	false
+IsScrollPatternAvailable:	false
+IsSelectionItemPatternAvailable:	false
+IsSelectionPatternAvailable:	false
+IsSpreadsheetItemPatternAvailable:	false
+IsSpreadsheetPatternAvailable:	false
+IsStylesPatternAvailable:	false
+IsSynchronizedInputPatternAvailable:	false
+IsTableItemPatternAvailable:	false
+IsTablePatternAvailable:	false
+IsTextChildPatternAvailable:	false
+IsTextEditPatternAvailable:	false
+IsTextPatternAvailable:	false
+IsTextPattern2Available:	false
+IsTogglePatternAvailable:	false
+IsTransformPatternAvailable:	false
+IsTransform2PatternAvailable:	false
+IsValuePatternAvailable:	true
+IsVirtualizedItemPatternAvailable:	false
+IsWindowPatternAvailable:	false
+IsCustomNavigationPatternAvailable:	false
+IsSelectionPattern2Available:	false
+FirstChild:	[null]
+LastChild:	[null]
+Next:	"İşlem No satır 1" öğe
+Previous:	[null]
+Other Props:	Object has no additional properties
+Children:	Container has no children
+Ancestors:	"Satır 1" liste öğesi
+	"Veri Paneli" 
+	"" tablo
+	"TAMAM KARTAL İlaç Listesi" pencere
+	"Masaüstü 1" bölme
+	[ No Parent ]

@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dotnet --version:*)",
+      "Bash(dotnet new:*)",
+      "Bash(dotnet build:*)",
+      "Read(//c/Windows/Microsoft.NET/assembly/GAC_MSIL/WindowsBase/v4.0_4.0.0.0__31bf3856ad364e35/**)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
