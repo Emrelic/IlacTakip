@@ -469,41 +469,28 @@ public partial class TaskChainRecorderForm : Form
         }
     }
 
-    private void btnPickElement_Click(object? sender, EventArgs e)
+    private async void btnPickElement_Click(object? sender, EventArgs e)
     {
         LogMessage("Element seçimi başlatılıyor...");
         LogMessage("3 saniye içinde hedef UI elementinin üzerine mouse'u getirin...");
 
         btnPickElement.Enabled = false;
 
-        // 3 saniye bekle, sonra mouse pozisyonundaki elementi yakala
-        Task.Delay(3000).ContinueWith(_ =>
+        try
         {
-            try
-            {
-                var elementInfo = UIElementPicker.CaptureElementAtMousePosition();
+            // 3 saniye bekle
+            await Task.Delay(3000);
 
-                if (InvokeRequired)
-                {
-                    Invoke(() => DisplayElementInfo(elementInfo));
-                }
-                else
-                {
-                    DisplayElementInfo(elementInfo);
-                }
-            }
-            catch (Exception ex)
-            {
-                if (InvokeRequired)
-                {
-                    Invoke(() =>
-                    {
-                        LogMessage($"HATA: {ex.Message}");
-                        btnPickElement.Enabled = true;
-                    });
-                }
-            }
-        });
+            // Mouse pozisyonundaki elementi yakala (async + 3 teknoloji entegrasyonu)
+            var elementInfo = await UIElementPicker.CaptureElementAtMousePositionAsync();
+
+            DisplayElementInfo(elementInfo);
+        }
+        catch (Exception ex)
+        {
+            LogMessage($"HATA: {ex.Message}");
+            btnPickElement.Enabled = true;
+        }
     }
 
     private void DisplayElementInfo(UIElementInfo? elementInfo)

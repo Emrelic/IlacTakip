@@ -3,6 +3,103 @@ using System.Windows.Automation;
 
 namespace MedulaOtomasyon;
 
+#region COM Interfaces for MSHTML
+
+/// <summary>
+/// IHTMLDocument2 COM interface (mshtml.dll)
+/// </summary>
+[ComImport]
+[Guid("332C4425-26CB-11D0-B483-00C04FD90119")]
+[InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
+internal interface IHTMLDocument2
+{
+    [return: MarshalAs(UnmanagedType.IDispatch)]
+    object GetScript();
+
+    IHTMLElementCollection GetAll();
+
+    [return: MarshalAs(UnmanagedType.Interface)]
+    object GetBody();
+
+    [return: MarshalAs(UnmanagedType.Interface)]
+    object GetActiveElement();
+
+    IHTMLElementCollection GetImages();
+    IHTMLElementCollection GetApplets();
+    IHTMLElementCollection GetLinks();
+    IHTMLElementCollection GetForms();
+    IHTMLElementCollection GetAnchors();
+
+    void SetTitle([MarshalAs(UnmanagedType.BStr)] string p);
+
+    [return: MarshalAs(UnmanagedType.BStr)]
+    string GetTitle();
+
+    IHTMLElementCollection GetElementsByName([MarshalAs(UnmanagedType.BStr)] string v);
+
+    [return: MarshalAs(UnmanagedType.Interface)]
+    IHTMLElement GetElementById([MarshalAs(UnmanagedType.BStr)] string v);
+}
+
+/// <summary>
+/// IHTMLElement COM interface
+/// </summary>
+[ComImport]
+[Guid("3050F1FF-98B5-11CF-BB82-00AA00BDCE0B")]
+[InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
+internal interface IHTMLElement
+{
+    void SetAttribute([MarshalAs(UnmanagedType.BStr)] string strAttributeName, object AttributeValue, int lFlags);
+    object GetAttribute([MarshalAs(UnmanagedType.BStr)] string strAttributeName, int lFlags);
+    bool RemoveAttribute([MarshalAs(UnmanagedType.BStr)] string strAttributeName, int lFlags);
+
+    void SetClassName([MarshalAs(UnmanagedType.BStr)] string p);
+    [return: MarshalAs(UnmanagedType.BStr)]
+    string GetClassName();
+
+    void SetId([MarshalAs(UnmanagedType.BStr)] string p);
+    [return: MarshalAs(UnmanagedType.BStr)]
+    string GetId();
+
+    [return: MarshalAs(UnmanagedType.BStr)]
+    string GetTagName();
+
+    [return: MarshalAs(UnmanagedType.Interface)]
+    IHTMLElement GetParentElement();
+
+    [return: MarshalAs(UnmanagedType.BStr)]
+    string GetInnerHTML();
+    void SetInnerHTML([MarshalAs(UnmanagedType.BStr)] string p);
+
+    [return: MarshalAs(UnmanagedType.BStr)]
+    string GetInnerText();
+    void SetInnerText([MarshalAs(UnmanagedType.BStr)] string p);
+
+    [return: MarshalAs(UnmanagedType.BStr)]
+    string GetOuterHTML();
+    void SetOuterHTML([MarshalAs(UnmanagedType.BStr)] string p);
+}
+
+/// <summary>
+/// IHTMLElementCollection COM interface
+/// </summary>
+[ComImport]
+[Guid("3050F21F-98B5-11CF-BB82-00AA00BDCE0B")]
+[InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
+internal interface IHTMLElementCollection
+{
+    [return: MarshalAs(UnmanagedType.BStr)]
+    string ToString();
+
+    void SetLength(int p);
+    int GetLength();
+
+    [return: MarshalAs(UnmanagedType.Interface)]
+    object Item(object name, object index);
+}
+
+#endregion
+
 /// <summary>
 /// MSHTML (Internet Explorer) elementlerinden özellik çıkarır
 /// </summary>
@@ -152,6 +249,33 @@ public static class MSHTMLExtractor
         }
     }
 
+    #region Native Methods
+
+    private const int OBJID_CLIENT = unchecked((int)0xFFFFFFFC);
+    private const uint WM_HTML_GETOBJECT = 0x41D;
+
+    [DllImport("user32.dll", EntryPoint = "SendMessageTimeout")]
+    private static extern IntPtr SendMessageTimeout(
+        IntPtr hWnd,
+        uint msg,
+        IntPtr wParam,
+        IntPtr lParam,
+        uint flags,
+        uint timeout,
+        out IntPtr result);
+
+    [DllImport("oleacc.dll")]
+    private static extern int ObjectFromLresult(
+        IntPtr lResult,
+        [In] ref Guid riid,
+        IntPtr wParam,
+        [MarshalAs(UnmanagedType.IUnknown)] out object ppvObject);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr FindWindowEx(IntPtr hwndParent, IntPtr hwndChildAfter, string lpszClass, string? lpszWindow);
+
+    #endregion
+
     /// <summary>
     /// HTMLElement'e erişmeyi dener (COM interop)
     /// </summary>
@@ -159,17 +283,173 @@ public static class MSHTMLExtractor
     {
         try
         {
-            // ValuePattern'den değer al
-            if (element.TryGetCurrentPattern(ValuePattern.Pattern, out object? valuePattern)
-                && valuePattern is ValuePattern vp)
+            // 1. IHTMLDocument2'yi al
+            var doc = TryGetHTMLDocument(element);
+            if (doc == null)
             {
-                // Bu kısım basitleştirilmiş - gerçek MSHTML erişimi daha karmaşık
-                // Şimdilik null döndür, ileride COM interop ile geliştirilecek
                 return null;
             }
-        }
-        catch { }
 
+            // 2. Element'i document'te bul
+            // AutomationId genellikle HTML id ile eşleşir
+            var automationId = element.Current.AutomationId;
+            if (!string.IsNullOrEmpty(automationId))
+            {
+                try
+                {
+                    var htmlElement = doc.GetElementById(automationId);
+                    if (htmlElement != null)
+                    {
+                        return htmlElement;
+                    }
+                }
+                catch { }
+            }
+
+            // Name ile bul
+            var name = element.Current.Name;
+            if (!string.IsNullOrEmpty(name))
+            {
+                try
+                {
+                    var elements = doc.GetElementsByName(name);
+                    if (elements != null && elements.GetLength() > 0)
+                    {
+                        return elements.Item(0, 0);
+                    }
+                }
+                catch { }
+            }
+
+            // Element bulunamadı ama document var - temel bilgiler için document kullanabiliriz
+            return null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// IHTMLDocument2 nesnesini almaya çalışır
+    /// </summary>
+    private static IHTMLDocument2? TryGetHTMLDocument(AutomationElement element)
+    {
+        try
+        {
+            // Window handle'ını al
+            var hwnd = new IntPtr(element.Current.NativeWindowHandle);
+            if (hwnd == IntPtr.Zero)
+            {
+                // Parent window'dan bul
+                var window = GetParentWindow(element);
+                if (window != null)
+                {
+                    hwnd = new IntPtr(window.Current.NativeWindowHandle);
+                }
+            }
+
+            if (hwnd == IntPtr.Zero)
+            {
+                return null;
+            }
+
+            // IE_Server child window'unu bul
+            var ieServerHwnd = FindIEServerWindow(hwnd);
+            if (ieServerHwnd == IntPtr.Zero)
+            {
+                ieServerHwnd = hwnd; // Kendi HWND'si IE_Server olabilir
+            }
+
+            // WM_HTML_GETOBJECT message gönder
+            IntPtr lResult;
+            var sendResult = SendMessageTimeout(
+                ieServerHwnd,
+                WM_HTML_GETOBJECT,
+                IntPtr.Zero,
+                IntPtr.Zero,
+                2, // SMTO_ABORTIFHUNG
+                1000,
+                out lResult);
+
+            if (lResult == IntPtr.Zero)
+            {
+                return null;
+            }
+
+            // IHTMLDocument2 GUID
+            var iid = typeof(IHTMLDocument2).GUID;
+
+            // ObjectFromLresult ile IHTMLDocument2 al
+            int hr = ObjectFromLresult(lResult, ref iid, IntPtr.Zero, out object doc);
+            if (hr == 0 && doc is IHTMLDocument2 htmlDoc)
+            {
+                return htmlDoc;
+            }
+
+            return null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// IE_Server child window'unu bulur
+    /// </summary>
+    private static IntPtr FindIEServerWindow(IntPtr hwndParent)
+    {
+        try
+        {
+            // Doğrudan IE_Server ara
+            var ieServer = FindWindowEx(hwndParent, IntPtr.Zero, "Internet Explorer_Server", null);
+            if (ieServer != IntPtr.Zero)
+            {
+                return ieServer;
+            }
+
+            // Nested aramaya çalış (TabWindowClass > Shell DocObject View > Internet Explorer_Server)
+            var tabWindow = FindWindowEx(hwndParent, IntPtr.Zero, "TabWindowClass", null);
+            if (tabWindow != IntPtr.Zero)
+            {
+                var shellDocView = FindWindowEx(tabWindow, IntPtr.Zero, "Shell DocObject View", null);
+                if (shellDocView != IntPtr.Zero)
+                {
+                    ieServer = FindWindowEx(shellDocView, IntPtr.Zero, "Internet Explorer_Server", null);
+                    if (ieServer != IntPtr.Zero)
+                    {
+                        return ieServer;
+                    }
+                }
+            }
+
+            return IntPtr.Zero;
+        }
+        catch
+        {
+            return IntPtr.Zero;
+        }
+    }
+
+    private static AutomationElement? GetParentWindow(AutomationElement element)
+    {
+        var current = element;
+        while (current != null)
+        {
+            try
+            {
+                if (current.Current.ControlType == ControlType.Window)
+                {
+                    return current;
+                }
+                current = TreeWalker.RawViewWalker.GetParent(current);
+            }
+            catch
+            {
+                break;
+            }
+        }
         return null;
     }
 

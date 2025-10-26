@@ -24,7 +24,7 @@ public class UIElementPicker
     /// <summary>
     /// Mouse pozisyonundaki UI elementini UI Automation ile yakalar
     /// </summary>
-    public static UIElementInfo? CaptureElementAtMousePosition()
+    public static async Task<UIElementInfo?> CaptureElementAtMousePositionAsync()
     {
         try
         {
@@ -41,7 +41,7 @@ public class UIElementPicker
                 return null;
             }
 
-            return ExtractUIAutomationInfo(element);
+            return await ExtractUIAutomationInfoAsync(element);
         }
         catch (Exception ex)
         {
@@ -50,9 +50,35 @@ public class UIElementPicker
     }
 
     /// <summary>
-    /// UI Automation elementinden tüm özellikleri çıkarır
+    /// Mouse pozisyonundaki UI elementini UI Automation ile yakalar (synchronous wrapper)
+    /// </summary>
+    public static UIElementInfo? CaptureElementAtMousePosition()
+    {
+        return CaptureElementAtMousePositionAsync().GetAwaiter().GetResult();
+    }
+
+    /// <summary>
+    /// UI Automation elementinden tüm özellikleri çıkarır (async)
+    /// 3 teknoloji ile zenginleştirme: UI Automation → Playwright → MSHTML
+    /// </summary>
+    public static async Task<UIElementInfo> ExtractUIAutomationInfoAsync(AutomationElement element)
+    {
+        var info = await ExtractUIAutomationInfoInternalAsync(element);
+        return info;
+    }
+
+    /// <summary>
+    /// UI Automation elementinden tüm özellikleri çıkarır (synchronous wrapper)
     /// </summary>
     public static UIElementInfo ExtractUIAutomationInfo(AutomationElement element)
+    {
+        return ExtractUIAutomationInfoAsync(element).GetAwaiter().GetResult();
+    }
+
+    /// <summary>
+    /// UI Automation elementinden tüm özellikleri çıkarır (internal async implementation)
+    /// </summary>
+    private static async Task<UIElementInfo> ExtractUIAutomationInfoInternalAsync(AutomationElement element)
     {
         var info = new UIElementInfo
         {
@@ -163,13 +189,49 @@ public class UIElementPicker
 
             // DescribedBy UIA'da yok, MSHTML'den alınacak
 
-            // === WEB/HTML ÖZELLİKLERİ (IE için) ===
-            if (info.FrameworkId == "InternetExplorer" || info.FrameworkId == "Edge" || info.FrameworkId == "Chrome")
+            // === 3 TEKNOLOJİ İLE ZENGİNLEŞTİRME ===
+            // Teknoloji 1: UI Automation (yukarıda tamamlandı)
+
+            // Teknoloji 2: Playwright (Chrome, Edge, Firefox için)
+            if (info.FrameworkId == "Chrome" || info.FrameworkId == "Edge" || info.FrameworkId == "Firefox")
             {
                 ExtractWebProperties(element, info);
 
-                // MSHTML ile daha detaylı bilgi topla
-                MSHTMLExtractor.EnrichWithMSHTML(element, info);
+                try
+                {
+                    await PlaywrightExtractor.EnrichWithPlaywrightAsync(element, info);
+
+                    // Detection method güncelle
+                    if (!string.IsNullOrEmpty(info.PlaywrightSelector))
+                    {
+                        info.DetectionMethod = "UIAutomation+Playwright";
+                    }
+                }
+                catch
+                {
+                    // Playwright hatası - devam et
+                }
+            }
+
+            // Teknoloji 3: MSHTML (Internet Explorer için)
+            else if (info.FrameworkId == "InternetExplorer")
+            {
+                ExtractWebProperties(element, info);
+
+                try
+                {
+                    MSHTMLExtractor.EnrichWithMSHTML(element, info);
+
+                    // Detection method güncelle
+                    if (!string.IsNullOrEmpty(info.CssSelector) || !string.IsNullOrEmpty(info.XPath))
+                    {
+                        info.DetectionMethod = "UIAutomation+MSHTML";
+                    }
+                }
+                catch
+                {
+                    // MSHTML hatası - devam et
+                }
             }
 
         }
