@@ -52,9 +52,13 @@ public class MedulaAutomation
             await ClickReceteListesiAsync(medulaWindow);
             await Task.Delay(2000);
 
-            // 2. 'A' satırına double-click
-            Log("Adım 2: 'A' satırına double-click yapılıyor...");
-            await DoubleClickElementAsync(medulaWindow, "Name", "A", ControlType.DataItem);
+            // 2. ComboBox'tan A Grubu seç ve Sorgula butonuna bas
+            Log("Adım 2: ComboBox'tan 'A Grubu' seçiliyor...");
+            await SelectAGrubuFromComboBoxAsync(medulaWindow);
+            await Task.Delay(600);
+
+            Log("Adım 2.1: Sorgula butonuna basılıyor...");
+            await ClickSorgulaButtonAsync(medulaWindow);
             await Task.Delay(600);
 
             // 3. '1' numaralı satıra tıkla
@@ -251,6 +255,288 @@ public class MedulaAutomation
         Log($"  IsOffscreen: {button.Current.IsOffscreen}");
 
         InvokeElement(button);
+    }
+
+    private async Task SelectAGrubuFromComboBoxAsync(AutomationElement window)
+    {
+        Log("ComboBox aranıyor...");
+
+        // 1. ComboBox'ı bul
+        AutomationElement? comboBox = null;
+        await Task.Run(() =>
+        {
+            try
+            {
+                var comboBoxes = window.FindAll(
+                    TreeScope.Descendants,
+                    new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ComboBox)
+                );
+
+                Log($"{comboBoxes.Count} ComboBox bulundu");
+
+                if (comboBoxes.Count > 0)
+                {
+                    comboBox = comboBoxes[0] as AutomationElement;
+                    Log($"✓ ComboBox bulundu!");
+                    Log($"  Name: '{comboBox.Current.Name}'");
+                    Log($"  BoundingRectangle: {comboBox.Current.BoundingRectangle}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"ComboBox arama hatası: {ex.Message}");
+            }
+        });
+
+        if (comboBox == null)
+        {
+            throw new Exception("ComboBox bulunamadı!");
+        }
+
+        // 2. ComboBox'ı aç - ExpandCollapsePattern ile dene
+        Log("ComboBox açılıyor...");
+        bool opened = false;
+
+        if (comboBox.TryGetCurrentPattern(ExpandCollapsePattern.Pattern, out object? expandPattern) &&
+            expandPattern is ExpandCollapsePattern ecp)
+        {
+            try
+            {
+                var currentState = ecp.Current.ExpandCollapseState;
+                Log($"ExpandCollapseState: {currentState}");
+
+                if (currentState == ExpandCollapseState.Collapsed)
+                {
+                    Log("ExpandCollapsePattern.Expand() çağrılıyor...");
+                    ecp.Expand();
+                    opened = true;
+                    await Task.Delay(800);
+                    Log("✓ ComboBox ExpandCollapsePattern ile açıldı");
+                }
+                else
+                {
+                    Log("✓ ComboBox zaten açık");
+                    opened = true;
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"ExpandCollapsePattern hatası: {ex.Message}");
+            }
+        }
+
+        // 3. Eğer ExpandCollapsePattern çalışmazsa, ComboBox'a tıkla
+        if (!opened)
+        {
+            Log("ComboBox'a mouse click yapılıyor...");
+            var rect = comboBox.Current.BoundingRectangle;
+            var centerX = (int)(rect.Left + rect.Width / 2);
+            var centerY = (int)(rect.Top + rect.Height / 2);
+            Log($"Mouse click pozisyonu: ({centerX}, {centerY})");
+            MouseClick(centerX, centerY);
+            await Task.Delay(800);
+            Log("✓ ComboBox mouse click ile açıldı");
+        }
+
+        // 4. A Grubu liste öğesini bul
+        Log("A Grubu liste öğesi aranıyor...");
+        AutomationElement? aGrubuItem = null;
+        int attemptCount = 0;
+        int maxAttempts = 5;
+
+        while (aGrubuItem == null && attemptCount < maxAttempts)
+        {
+            attemptCount++;
+            Log($"A Grubu arama denemesi {attemptCount}/{maxAttempts}...");
+
+            await Task.Run(() =>
+            {
+                try
+                {
+                    // MEDULA process'ine ait tüm ListItem'ları ara
+                    var medulaProcessId = window.Current.ProcessId;
+                    var allElements = AutomationElement.RootElement.FindAll(
+                        TreeScope.Descendants,
+                        new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem)
+                    );
+
+                    Log($"{allElements.Count} liste öğesi bulundu (tüm sistem)");
+
+                    foreach (AutomationElement elem in allElements)
+                    {
+                        try
+                        {
+                            // Sadece MEDULA process'ine ait olanları kontrol et
+                            if (elem.Current.ProcessId == medulaProcessId)
+                            {
+                                var name = elem.Current.Name;
+                                if (name == "A Grubu" || name.Trim() == "A Grubu")
+                                {
+                                    aGrubuItem = elem;
+                                    Log($"✓ A Grubu bulundu!");
+                                    Log($"  Name: '{name}'");
+                                    Log($"  BoundingRectangle: {elem.Current.BoundingRectangle}");
+                                    Log($"  IsOffscreen: {elem.Current.IsOffscreen}");
+                                    Log($"  hwnd: 0x{elem.Current.NativeWindowHandle:X}");
+                                    break;
+                                }
+                            }
+                        }
+                        catch { }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log($"Arama hatası: {ex.Message}");
+                }
+            });
+
+            if (aGrubuItem == null && attemptCount < maxAttempts)
+            {
+                Log($"A Grubu bulunamadı, {400 * attemptCount}ms bekleyip tekrar deneniyor...");
+                await Task.Delay(400 * attemptCount); // 400ms, 800ms, 1200ms, 1600ms, 2000ms
+            }
+        }
+
+        if (aGrubuItem == null)
+        {
+            throw new Exception("A Grubu liste öğesi bulunamadı! ComboBox açık olmayabilir veya A Grubu listede yok.");
+        }
+
+        // 5. A Grubu öğesini seç - SelectionItemPattern öncelikli
+        Log("A Grubu seçiliyor...");
+        bool selected = false;
+
+        // Yöntem 1: SelectionItemPattern (önerilen)
+        if (aGrubuItem.TryGetCurrentPattern(SelectionItemPattern.Pattern, out object? selectionPattern) &&
+            selectionPattern is SelectionItemPattern sip)
+        {
+            try
+            {
+                Log($"SelectionItemPattern kullanılarak seçiliyor... (IsSelected: {sip.Current.IsSelected})");
+
+                // Zaten seçili değilse seç
+                if (!sip.Current.IsSelected)
+                {
+                    sip.Select();
+                    Log("✓ SelectionItemPattern ile seçildi");
+                }
+                else
+                {
+                    Log("✓ A Grubu zaten seçili");
+                }
+
+                selected = true;
+            }
+            catch (Exception ex)
+            {
+                Log($"SelectionItemPattern hatası: {ex.Message}");
+            }
+        }
+
+        // Yöntem 2: InvokePattern
+        if (!selected && aGrubuItem.TryGetCurrentPattern(InvokePattern.Pattern, out object? invokePattern) &&
+            invokePattern is InvokePattern ip)
+        {
+            try
+            {
+                Log("InvokePattern kullanılarak seçiliyor...");
+                ip.Invoke();
+                selected = true;
+                Log("✓ InvokePattern ile seçildi");
+            }
+            catch (Exception ex)
+            {
+                Log($"InvokePattern hatası: {ex.Message}");
+            }
+        }
+
+        // Yöntem 3: MouseClick (fallback)
+        if (!selected)
+        {
+            Log("MouseClick kullanılarak seçiliyor...");
+
+            // ScrollIntoView dene
+            if (aGrubuItem.TryGetCurrentPattern(ScrollItemPattern.Pattern, out object? scrollPattern) &&
+                scrollPattern is ScrollItemPattern scrollItem)
+            {
+                try
+                {
+                    scrollItem.ScrollIntoView();
+                    await Task.Delay(300);
+                }
+                catch { }
+            }
+
+            var rect = aGrubuItem.Current.BoundingRectangle;
+            var centerX = (int)(rect.Left + rect.Width / 2);
+            var centerY = (int)(rect.Top + rect.Height / 2);
+            Log($"Mouse click pozisyonu: ({centerX}, {centerY})");
+            MouseClick(centerX, centerY);
+            Log("✓ MouseClick ile seçildi");
+        }
+
+        await Task.Delay(1200); // Seçim yapılması ve sayfa yüklenmesi için bekle
+        Log("✓ A Grubu seçim işlemi tamamlandı");
+    }
+
+    private async Task ClickSorgulaButtonAsync(AutomationElement window)
+    {
+        Log("Sorgula butonu aranıyor...");
+
+        AutomationElement? button = null;
+
+        // Yöntem 1: ElementPath ile ara
+        try
+        {
+            Log("ElementPath ile deneniyor...");
+            const string sorgulaPath = "Pane[Medula Eczane]/Table/Custom/Table/Custom/Table/Custom/Table/Custom/Button[Sorgula]";
+            button = FindElementByPath(window, sorgulaPath);
+
+            if (button != null)
+            {
+                Log("✓ ElementPath ile Sorgula butonu bulundu!");
+            }
+        }
+        catch (Exception ex)
+        {
+            Log($"ElementPath hatası: {ex.Message}");
+        }
+
+        // Yöntem 2: AutomationId ile ara
+        if (button == null)
+        {
+            Log("AutomationId ile deneniyor...");
+            button = await FindElementAsync(window, "AutomationId", "form1:buttonSonlandirilmamisReceteler", ControlType.Button, retryCount: 2);
+
+            if (button != null)
+            {
+                Log("✓ AutomationId ile Sorgula butonu bulundu!");
+            }
+        }
+
+        // Yöntem 3: Name ile ara (tüm butonları tara)
+        if (button == null)
+        {
+            Log("Name ile FindAll yapılıyor...");
+            button = await FindElementByNameWithFindAll(window, "Sorgula", ControlType.Button);
+
+            if (button != null)
+            {
+                Log("✓ Name ile Sorgula butonu bulundu!");
+            }
+        }
+
+        if (button == null)
+        {
+            throw new Exception("Sorgula butonu bulunamadı! Lütfen MEDULA'da doğru sayfada olduğunuzdan emin olun.");
+        }
+
+        Log($"Sorgula butonuna basılıyor...");
+        Log($"  Name: '{button.Current.Name}'");
+        Log($"  BoundingRectangle: {button.Current.BoundingRectangle}");
+        InvokeElement(button);
+        Log("✓ Sorgula butonuna basıldı");
     }
 
     private async Task<AutomationElement?> FindElementAsync(
@@ -639,6 +925,92 @@ public class MedulaAutomation
     }
 
     #endregion
+
+    private AutomationElement? FindElementByPath(AutomationElement root, string elementPath)
+    {
+        try
+        {
+            Log($"ElementPath ile arama başlıyor: {elementPath}");
+
+            // Path'i parse et: "Pane[Medula Eczane]/Table/Custom/Table/Custom/Button[Sorgula]"
+            var parts = elementPath.Split('/');
+            AutomationElement current = root;
+
+            foreach (var part in parts)
+            {
+                if (string.IsNullOrEmpty(part)) continue;
+
+                // Part'ı parse et: "Pane[Medula Eczane]" veya "Table"
+                string controlTypeName;
+                string? elementName = null;
+
+                if (part.Contains('['))
+                {
+                    var bracketIndex = part.IndexOf('[');
+                    controlTypeName = part.Substring(0, bracketIndex);
+                    elementName = part.Substring(bracketIndex + 1, part.Length - bracketIndex - 2); // "[" ve "]" çıkar
+                }
+                else
+                {
+                    controlTypeName = part;
+                }
+
+                // ControlType'ı bul
+                ControlType? controlType = controlTypeName switch
+                {
+                    "Pane" => ControlType.Pane,
+                    "Table" => ControlType.Table,
+                    "Custom" => ControlType.Custom,
+                    "Button" => ControlType.Button,
+                    "ComboBox" => ControlType.ComboBox,
+                    "List" => ControlType.List,
+                    "ListItem" => ControlType.ListItem,
+                    "Text" => ControlType.Text,
+                    _ => null
+                };
+
+                if (controlType == null)
+                {
+                    Log($"Bilinmeyen ControlType: {controlTypeName}");
+                    return null;
+                }
+
+                // Element'i bul
+                Condition condition;
+                if (elementName != null)
+                {
+                    condition = new AndCondition(
+                        new PropertyCondition(AutomationElement.ControlTypeProperty, controlType),
+                        new PropertyCondition(AutomationElement.NameProperty, elementName)
+                    );
+                    Log($"Aranan: {controlTypeName}[{elementName}]");
+                }
+                else
+                {
+                    condition = new PropertyCondition(AutomationElement.ControlTypeProperty, controlType);
+                    Log($"Aranan: {controlTypeName}");
+                }
+
+                var found = current.FindFirst(TreeScope.Children, condition);
+                if (found == null)
+                {
+                    Log($"Bulunamadı: {part}");
+                    return null;
+                }
+
+                Log($"✓ Bulundu: {found.Current.ControlType.ProgrammaticName} - {found.Current.Name}");
+                current = found;
+            }
+
+            Log($"✓ ElementPath başarıyla çözüldü!");
+            return current;
+        }
+        catch (Exception ex)
+        {
+            Log($"ElementPath arama hatası: {ex.Message}");
+            return null;
+        }
+    }
 
     #region Debug Methods
 

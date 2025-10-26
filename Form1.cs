@@ -105,4 +105,10 @@ public partial class Form1 : Form
             LogMessage($"Debug hatası: {ex.Message}");
         }
     }
+
+    private void btnTaskChainRecorder_Click(object sender, EventArgs e)
+    {
+        var recorderForm = new TaskChainRecorderForm();
+        recorderForm.ShowDialog();
+    }
 }

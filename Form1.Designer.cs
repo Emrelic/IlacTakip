@@ -32,6 +32,7 @@ partial class Form1
         btnBGrubu = new Button();
         btnCGrubu = new Button();
         btnDebug = new Button();
+        btnTaskChainRecorder = new Button();
         lblStatus = new Label();
         txtLog = new TextBox();
         SuspendLayout();
@@ -80,6 +81,17 @@ partial class Form1
         btnDebug.UseVisualStyleBackColor = true;
         btnDebug.Click += btnDebug_Click;
         //
+        // btnTaskChainRecorder
+        //
+        btnTaskChainRecorder.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
+        btnTaskChainRecorder.Location = new Point(300, 550);
+        btnTaskChainRecorder.Name = "btnTaskChainRecorder";
+        btnTaskChainRecorder.Size = new Size(200, 40);
+        btnTaskChainRecorder.TabIndex = 6;
+        btnTaskChainRecorder.Text = "Görev Zinciri Kaydedici";
+        btnTaskChainRecorder.UseVisualStyleBackColor = true;
+        btnTaskChainRecorder.Click += btnTaskChainRecorder_Click;
+        //
         // lblStatus
         //
         lblStatus.AutoSize = true;
@@ -105,7 +117,8 @@ partial class Form1
         //
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
-        ClientSize = new Size(800, 570);
+        ClientSize = new Size(800, 610);
+        Controls.Add(btnTaskChainRecorder);
         Controls.Add(txtLog);
         Controls.Add(btnDebug);
         Controls.Add(lblStatus);
@@ -124,6 +137,7 @@ partial class Form1
     private Button btnBGrubu;
     private Button btnCGrubu;
     private Button btnDebug;
+    private Button btnTaskChainRecorder;
     private Label lblStatus;
     private TextBox txtLog;
 }
