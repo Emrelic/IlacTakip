@@ -32,6 +32,14 @@ public partial class TaskChainPlayerForm : Form
 
     private void TaskChainPlayerForm_Load(object? sender, EventArgs e)
     {
+        // Formu sağ alt köşede aç
+        var workingArea = Screen.PrimaryScreen!.WorkingArea;
+        this.StartPosition = FormStartPosition.Manual;
+        this.Location = new Point(
+            workingArea.Right - this.Width,
+            workingArea.Bottom - this.Height
+        );
+
         LoadChains();
         Log("Görev Zinciri Oynatıcı hazır.");
     }
@@ -131,7 +139,7 @@ public partial class TaskChainPlayerForm : Form
     {
         if (_selectedChain == null)
         {
-            MessageBox.Show("Lütfen bir görev zinciri seçin!", "Uyarı",
+            ShowMessage("Lütfen bir görev zinciri seçin!", "Uyarı",
                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
@@ -180,7 +188,7 @@ public partial class TaskChainPlayerForm : Form
     /// </summary>
     private void btnStop_Click(object? sender, EventArgs e)
     {
-        var result = MessageBox.Show(
+        var result = ShowMessage(
             "Çalıştırmayı durdurmak istediğinizden emin misiniz?",
             "Onay",
             MessageBoxButtons.YesNo,
@@ -294,7 +302,7 @@ public partial class TaskChainPlayerForm : Form
         {
             Invoke(() =>
             {
-                MessageBox.Show(
+                ShowMessage(
                     $"Görev zinciri başarıyla tamamlandı!\n\n" +
                     $"Toplam süre: {e.Record.TotalDurationMs}ms\n" +
                     $"Başarılı: {e.Record.SuccessfulSteps}/{e.Record.TotalSteps}",
@@ -317,7 +325,7 @@ public partial class TaskChainPlayerForm : Form
         {
             Invoke(() =>
             {
-                MessageBox.Show(
+                ShowMessage(
                     $"Görev zinciri başarısız!\n\n" +
                     $"Hata: {e.Message}\n" +
                     $"Başarılı: {e.Record.SuccessfulSteps}/{e.Record.TotalSteps}",
@@ -405,11 +413,18 @@ public partial class TaskChainPlayerForm : Form
             Text = "Hata Oluştu",
             Width = 450,
             Height = 220,
-            StartPosition = FormStartPosition.CenterParent,
+            StartPosition = FormStartPosition.Manual,
             FormBorderStyle = FormBorderStyle.FixedDialog,
             MaximizeBox = false,
             MinimizeBox = false
         };
+
+        // Dialog'u sağ alt köşede aç
+        var workingArea = Screen.PrimaryScreen!.WorkingArea;
+        dialog.Location = new Point(
+            workingArea.Right - dialog.Width,
+            workingArea.Bottom - dialog.Height
+        );
 
         var lblMessage = new Label
         {
@@ -500,7 +515,7 @@ public partial class TaskChainPlayerForm : Form
         // Çalışıyorsa durdur
         if (_executor.IsRunning)
         {
-            var result = MessageBox.Show(
+            var result = ShowMessage(
                 "Görev zinciri hala çalışıyor. Kapatmak istediğinizden emin misiniz?",
                 "Onay",
                 MessageBoxButtons.YesNo,
@@ -516,5 +531,13 @@ public partial class TaskChainPlayerForm : Form
         }
 
         base.OnFormClosing(e);
+    }
+
+    /// <summary>
+    /// MessageBox göster - Form topmost ise MessageBox da topmost olur
+    /// </summary>
+    private DialogResult ShowMessage(string text, string caption = "", MessageBoxButtons buttons = MessageBoxButtons.OK, MessageBoxIcon icon = MessageBoxIcon.None)
+    {
+        return MessageBox.Show(this, text, caption, buttons, icon);
     }
 }

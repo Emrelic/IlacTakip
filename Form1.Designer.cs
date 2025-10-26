@@ -32,6 +32,7 @@ partial class Form1
         btnBGrubu = new Button();
         btnCGrubu = new Button();
         btnDebug = new Button();
+        btnTopmost = new Button();
         btnTaskChainRecorder = new Button();
         btnTaskChainPlayer = new Button();
         lblStatus = new Label();
@@ -82,6 +83,17 @@ partial class Form1
         btnDebug.UseVisualStyleBackColor = true;
         btnDebug.Click += btnDebug_Click;
         //
+        // btnTopmost
+        //
+        btnTopmost.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
+        btnTopmost.Location = new Point(530, 150);
+        btnTopmost.Name = "btnTopmost";
+        btnTopmost.Size = new Size(110, 30);
+        btnTopmost.TabIndex = 8;
+        btnTopmost.Text = "📌 En Üstte Tut";
+        btnTopmost.UseVisualStyleBackColor = true;
+        btnTopmost.Click += btnTopmost_Click;
+        //
         // btnTaskChainRecorder
         //
         btnTaskChainRecorder.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
@@ -130,6 +142,7 @@ partial class Form1
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
         ClientSize = new Size(800, 610);
+        Controls.Add(btnTopmost);
         Controls.Add(btnTaskChainPlayer);
         Controls.Add(btnTaskChainRecorder);
         Controls.Add(txtLog);
@@ -150,6 +163,7 @@ partial class Form1
     private Button btnBGrubu;
     private Button btnCGrubu;
     private Button btnDebug;
+    private Button btnTopmost;
     private Button btnTaskChainRecorder;
     private Button btnTaskChainPlayer;
     private Label lblStatus;

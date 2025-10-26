@@ -11,6 +11,7 @@ public partial class TaskChainRecorderForm : Form
     private TaskStep _currentStep;
     private List<ElementLocatorStrategy> _availableStrategies = new();
     private ElementLocatorStrategy? _selectedStrategy = null;
+    private CancellationTokenSource? _testCancellationTokenSource = null;
 
     public TaskChainRecorderForm()
     {
@@ -30,6 +31,22 @@ public partial class TaskChainRecorderForm : Form
 
         UpdateStepNumberLabel();
         LogMessage("Görev kaydedici başlatıldı. İlk adım için hedef seçin.");
+
+        // Formu sağ alt köşede aç
+        this.Load += TaskChainRecorderForm_Load;
+    }
+
+    private void TaskChainRecorderForm_Load(object? sender, EventArgs e)
+    {
+        // Ekranın çalışma alanını al
+        var workingArea = Screen.PrimaryScreen!.WorkingArea;
+
+        // Formun sağ alt köşe pozisyonunu hesapla
+        this.StartPosition = FormStartPosition.Manual;
+        this.Location = new Point(
+            workingArea.Right - this.Width,
+            workingArea.Bottom - this.Height
+        );
     }
 
     private void UpdateStepNumberLabel()
@@ -65,13 +82,13 @@ public partial class TaskChainRecorderForm : Form
                 break;
 
             case 2: // Tip 3: Sayfa Durum Kontrolü
-                MessageBox.Show("Tip 3: Sayfa Durum Kontrolü henüz uygulanmadı.\nYakında eklenecek.",
+                ShowMessage("Tip 3: Sayfa Durum Kontrolü henüz uygulanmadı.\nYakında eklenecek.",
                     "Bilgi", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 cmbStepType.SelectedIndex = 0;
                 break;
 
             case 3: // Tip 4: Döngü veya Bitiş Koşulu
-                MessageBox.Show("Tip 4: Döngü veya Bitiş Koşulu henüz uygulanmadı.\nYakında eklenecek.",
+                ShowMessage("Tip 4: Döngü veya Bitiş Koşulu henüz uygulanmadı.\nYakında eklenecek.",
                     "Bilgi", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 cmbStepType.SelectedIndex = 0;
                 break;
@@ -87,7 +104,7 @@ public partial class TaskChainRecorderForm : Form
             FilterIndex = 1
         };
 
-        if (openFileDialog.ShowDialog() == DialogResult.OK)
+        if (openFileDialog.ShowDialog(this) == DialogResult.OK)
         {
             txtProgramPath.Text = openFileDialog.FileName;
             _currentStep.Target = new TargetInfo
@@ -189,7 +206,7 @@ public partial class TaskChainRecorderForm : Form
         {
             if (_currentStep.Target == null)
             {
-                MessageBox.Show("Lütfen önce bir hedef seçin!", "Uyarı", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                ShowMessage("Lütfen önce bir hedef seçin!", "Uyarı", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
             _currentStep.Description = $"Adım {_currentStepNumber}: Hedef - {txtProgramPath.Text}";
@@ -198,14 +215,14 @@ public partial class TaskChainRecorderForm : Form
         {
             if (_currentStep.UIElement == null)
             {
-                MessageBox.Show("Lütfen önce bir UI element seçin!", "Uyarı", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                ShowMessage("Lütfen önce bir UI element seçin!", "Uyarı", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
             // Strateji seçilmeli
             if (_selectedStrategy == null)
             {
-                MessageBox.Show("Lütfen bir element bulma stratejisi seçin!\n\n" +
+                ShowMessage("Lütfen bir element bulma stratejisi seçin!\n\n" +
                               "1. Element Seç butonuna tıklayın\n" +
                               "2. Tüm Stratejileri Test Et'e tıklayın\n" +
                               "3. Listeden bir strateji seçin",
@@ -216,7 +233,7 @@ public partial class TaskChainRecorderForm : Form
             // Başarısız strateji uyarısı
             if (!_selectedStrategy.IsSuccessful)
             {
-                var result = MessageBox.Show(
+                var result = ShowMessage(
                     $"Seçtiğiniz strateji test sırasında BAŞARISIZ oldu!\n\n" +
                     $"Strateji: {_selectedStrategy.Name}\n" +
                     $"Hata: {_selectedStrategy.ErrorMessage}\n\n" +
@@ -262,13 +279,20 @@ public partial class TaskChainRecorderForm : Form
         _currentChain.Steps.Add(_currentStep);
         LogMessage($"✓ Adım {_currentStepNumber} kaydedildi: {_currentStep.Description}");
 
-        MessageBox.Show($"Adım {_currentStepNumber} başarıyla kaydedildi!", "Başarılı",
+        ShowMessage($"Adım {_currentStepNumber} başarıyla kaydedildi!", "Başarılı",
             MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
 
     private void btnTestStep_Click(object? sender, EventArgs e)
     {
         LogMessage("Test başlatılıyor...");
+
+        // Test sonuç labelını temizle
+        if (lblTestResult != null)
+        {
+            lblTestResult.Text = "⏳ Test ediliyor...";
+            lblTestResult.ForeColor = Color.Blue;
+        }
 
         try
         {
@@ -284,8 +308,11 @@ public partial class TaskChainRecorderForm : Form
         catch (Exception ex)
         {
             LogMessage($"HATA: {ex.Message}");
-            MessageBox.Show($"Test başarısız: {ex.Message}", "Hata",
-                MessageBoxButtons.OK, MessageBoxIcon.Error);
+            if (lblTestResult != null)
+            {
+                lblTestResult.Text = $"❌ Test Başarısız: {ex.Message}";
+                lblTestResult.ForeColor = Color.Red;
+            }
         }
     }
 
@@ -293,15 +320,18 @@ public partial class TaskChainRecorderForm : Form
     {
         if (_currentStep.Target == null)
         {
-            MessageBox.Show("Lütfen önce bir hedef seçin!", "Uyarı", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            ShowMessage("Lütfen önce bir hedef seçin!", "Uyarı", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
 
         if (_currentStep.Target.IsDesktop)
         {
             LogMessage("✓ Masaüstü hedefi - test başarılı.");
-            MessageBox.Show("Masaüstü hedefi doğrulandı!", "Test Başarılı",
-                MessageBoxButtons.OK, MessageBoxIcon.Information);
+            if (lblTestResult != null)
+            {
+                lblTestResult.Text = "✅ Test Başarılı - Masaüstü hedefi doğrulandı";
+                lblTestResult.ForeColor = Color.Green;
+            }
         }
         else if (!string.IsNullOrEmpty(_currentStep.Target.ProgramPath))
         {
@@ -315,8 +345,11 @@ public partial class TaskChainRecorderForm : Form
             if (process != null)
             {
                 LogMessage($"✓ Program başlatıldı: {_currentStep.Target.ProgramPath}");
-                MessageBox.Show("Program başarıyla başlatıldı!", "Test Başarılı",
-                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                if (lblTestResult != null)
+                {
+                    lblTestResult.Text = "✅ Test Başarılı - Program başlatıldı";
+                    lblTestResult.ForeColor = Color.Green;
+                }
             }
         }
         else if (!string.IsNullOrEmpty(_currentStep.Target.WindowTitle))
@@ -336,8 +369,11 @@ public partial class TaskChainRecorderForm : Form
                     {
                         found = true;
                         LogMessage($"✓ Pencere bulundu: {_currentStep.Target.WindowTitle}");
-                        MessageBox.Show("Hedef pencere doğrulandı!", "Test Başarılı",
-                            MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        if (lblTestResult != null)
+                        {
+                            lblTestResult.Text = "✅ Test Başarılı - Hedef pencere doğrulandı";
+                            lblTestResult.ForeColor = Color.Green;
+                        }
                         break;
                     }
                 }
@@ -347,8 +383,11 @@ public partial class TaskChainRecorderForm : Form
             if (!found)
             {
                 LogMessage($"⚠ Pencere bulunamadı: {_currentStep.Target.WindowTitle}");
-                MessageBox.Show("Hedef pencere şu anda bulunamadı!", "Uyarı",
-                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                if (lblTestResult != null)
+                {
+                    lblTestResult.Text = "⚠ Hedef pencere bulunamadı";
+                    lblTestResult.ForeColor = Color.Orange;
+                }
             }
         }
     }
@@ -357,58 +396,180 @@ public partial class TaskChainRecorderForm : Form
     {
         if (_currentStep.UIElement == null)
         {
-            MessageBox.Show("Lütfen önce bir UI element seçin!", "Uyarı", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            ShowMessage("Lütfen önce bir UI element seçin!", "Uyarı", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        // Strateji seçilmemiş ise uyar
+        if (_selectedStrategy == null)
+        {
+            ShowMessage("Lütfen önce 'Tüm Stratejileri Test Et' butonuna tıklayıp bir strateji seçin!",
+                "Uyarı", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
 
         LogMessage("UI Element test ediliyor...");
         LogMessage($"Element: {_currentStep.UIElement.Name}");
+        LogMessage($"Strateji: {_selectedStrategy.Name}");
         LogMessage($"Action: {cmbActionType.Text}");
 
-        // Basit test: Elementi tekrar bulmayı dene
+        // DEBUG: Window bilgisini logla
+        LogMessage($"Window: {_currentStep.UIElement.WindowTitle ?? "N/A"}");
+        LogMessage($"ProcessId: {_currentStep.UIElement.WindowProcessId?.ToString() ?? "N/A"}");
+
         try
         {
-            AutomationElement? element = null;
+            // Seçili strateji ile elementi bul (windowInfo ile hızlandırma)
+            var element = ElementLocatorTester.FindElementByStrategy(_selectedStrategy, _currentStep.UIElement);
 
-            // AutomationId ile bulmayı dene
-            if (!string.IsNullOrEmpty(_currentStep.UIElement.AutomationId))
-            {
-                var condition = new PropertyCondition(AutomationElement.AutomationIdProperty, _currentStep.UIElement.AutomationId);
-                element = AutomationElement.RootElement.FindFirst(TreeScope.Descendants, condition);
-            }
-
-            // Name ile bulmayı dene
-            if (element == null && !string.IsNullOrEmpty(_currentStep.UIElement.Name))
-            {
-                var condition = new PropertyCondition(AutomationElement.NameProperty, _currentStep.UIElement.Name);
-                element = AutomationElement.RootElement.FindFirst(TreeScope.Descendants, condition);
-            }
-
-            if (element != null)
-            {
-                LogMessage("✓ Element bulundu ve erişilebilir!");
-                MessageBox.Show($"Element test başarılı!\n\nElement: {_currentStep.UIElement.Name}\nİşlem: {cmbActionType.Text}",
-                    "Test Başarılı", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            }
-            else
+            if (element == null)
             {
                 LogMessage("⚠ Element bulunamadı!");
-                MessageBox.Show("Element şu anda bulunamadı! Hedef pencere açık mı kontrol edin.",
-                    "Uyarı", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                if (lblTestResult != null)
+                {
+                    lblTestResult.Text = $"⚠ Element bulunamadı - Strateji: {_selectedStrategy.Name}";
+                    lblTestResult.ForeColor = Color.Orange;
+                }
+                return;
+            }
+
+            LogMessage($"✓ Element bulundu: {element.Current.Name}");
+
+            // Action tipini al
+            var action = cmbActionType.SelectedIndex switch
+            {
+                0 => ActionType.LeftClick,
+                1 => ActionType.RightClick,
+                2 => ActionType.DoubleClick,
+                3 => ActionType.MouseWheel,
+                4 => ActionType.KeyPress,
+                5 => ActionType.TypeText,
+                _ => ActionType.None
+            };
+
+            // Eylemi gerçekleştir
+            ExecuteTestAction(element, action, txtKeysToPress.Text);
+
+            LogMessage($"✓ Eylem başarıyla gerçekleştirildi: {cmbActionType.Text}");
+            if (lblTestResult != null)
+            {
+                lblTestResult.Text = $"✅ Test Başarılı - {cmbActionType.Text} gerçekleştirildi";
+                lblTestResult.ForeColor = Color.Green;
             }
         }
         catch (Exception ex)
         {
-            LogMessage($"Element test hatası: {ex.Message}");
-            throw;
+            LogMessage($"❌ Test hatası: {ex.Message}");
+            if (lblTestResult != null)
+            {
+                lblTestResult.Text = $"❌ Test Başarısız - {ex.Message}";
+                lblTestResult.ForeColor = Color.Red;
+            }
         }
+    }
+
+    private void ExecuteTestAction(AutomationElement element, ActionType action, string inputText)
+    {
+        switch (action)
+        {
+            case ActionType.LeftClick:
+                LogMessage("Sol tıklama yapılıyor...");
+                ClickElement(element);
+                break;
+
+            case ActionType.DoubleClick:
+                LogMessage("Çift tıklama yapılıyor...");
+                DoubleClickElement(element);
+                break;
+
+            case ActionType.TypeText:
+                LogMessage($"Metin yazılıyor: {inputText}");
+                TypeText(element, inputText);
+                break;
+
+            case ActionType.KeyPress:
+                LogMessage($"Klavye tuşları gönderiliyor: {inputText}");
+                PressKeys(element, inputText);
+                break;
+
+            case ActionType.RightClick:
+                LogMessage("Sağ tıklama henüz desteklenmiyor.");
+                throw new NotSupportedException("Sağ tıklama henüz implement edilmedi.");
+
+            case ActionType.MouseWheel:
+                LogMessage("Mouse wheel henüz desteklenmiyor.");
+                throw new NotSupportedException("Mouse wheel henüz implement edilmedi.");
+
+            default:
+                throw new NotSupportedException($"Action type desteklenmiyor: {action}");
+        }
+    }
+
+    private void ClickElement(AutomationElement element)
+    {
+        if (element.TryGetCurrentPattern(InvokePattern.Pattern, out object? pattern) &&
+            pattern is InvokePattern invokePattern)
+        {
+            invokePattern.Invoke();
+        }
+        else
+        {
+            // Fallback: Mouse click
+            var rect = element.Current.BoundingRectangle;
+            var centerX = (int)(rect.Left + rect.Width / 2);
+            var centerY = (int)(rect.Top + rect.Height / 2);
+            MedulaAutomation.MouseClick(centerX, centerY);
+        }
+    }
+
+    private void DoubleClickElement(AutomationElement element)
+    {
+        var rect = element.Current.BoundingRectangle;
+        var centerX = (int)(rect.Left + rect.Width / 2);
+        var centerY = (int)(rect.Top + rect.Height / 2);
+        MedulaAutomation.MouseClick(centerX, centerY);
+        Thread.Sleep(50);
+        MedulaAutomation.MouseClick(centerX, centerY);
+    }
+
+    private void TypeText(AutomationElement element, string text)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            LogMessage("⚠ Yazılacak metin boş!");
+            return;
+        }
+
+        if (element.TryGetCurrentPattern(ValuePattern.Pattern, out object? pattern) &&
+            pattern is ValuePattern valuePattern)
+        {
+            valuePattern.SetValue(text);
+        }
+        else
+        {
+            // Fallback: SendKeys
+            element.SetFocus();
+            System.Windows.Forms.SendKeys.SendWait(text);
+        }
+    }
+
+    private void PressKeys(AutomationElement element, string keys)
+    {
+        if (string.IsNullOrEmpty(keys))
+        {
+            LogMessage("⚠ Gönderilecek tuş boş!");
+            return;
+        }
+
+        element.SetFocus();
+        System.Windows.Forms.SendKeys.SendWait(keys);
     }
 
     private void btnNextStep_Click(object? sender, EventArgs e)
     {
         if (!_currentChain.Steps.Any(s => s.StepNumber == _currentStepNumber))
         {
-            MessageBox.Show("Lütfen önce mevcut adımı kaydedin!", "Uyarı",
+            ShowMessage("Lütfen önce mevcut adımı kaydedin!", "Uyarı",
                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
@@ -435,7 +596,7 @@ public partial class TaskChainRecorderForm : Form
     {
         if (string.IsNullOrWhiteSpace(txtChainName.Text))
         {
-            MessageBox.Show("Lütfen görev zincirine bir isim verin!", "Uyarı",
+            ShowMessage("Lütfen görev zincirine bir isim verin!", "Uyarı",
                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
             txtChainName.Focus();
             return;
@@ -443,7 +604,7 @@ public partial class TaskChainRecorderForm : Form
 
         if (_currentChain.Steps.Count == 0)
         {
-            MessageBox.Show("Lütfen en az bir adım kaydedin!", "Uyarı",
+            ShowMessage("Lütfen en az bir adım kaydedin!", "Uyarı",
                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
@@ -457,20 +618,38 @@ public partial class TaskChainRecorderForm : Form
             LogMessage($"✓✓✓ Görev zinciri kaydedildi: {_currentChain.Name}");
             LogMessage($"Database yolu: {_database.GetDatabasePath()}");
 
-            MessageBox.Show($"Görev zinciri '{_currentChain.Name}' başarıyla kaydedildi!\n\n" +
+            ShowMessage($"Görev zinciri '{_currentChain.Name}' başarıyla kaydedildi!\n\n" +
                           $"Toplam {_currentChain.Steps.Count} adım kaydedildi.",
                 "Başarılı", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         catch (Exception ex)
         {
             LogMessage($"HATA: {ex.Message}");
-            MessageBox.Show($"Kaydetme hatası: {ex.Message}", "Hata",
+            ShowMessage($"Kaydetme hatası: {ex.Message}", "Hata",
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 
     private async void btnPickElement_Click(object? sender, EventArgs e)
     {
+        // Eğer test devam ediyorsa iptal et
+        if (_testCancellationTokenSource != null)
+        {
+            _testCancellationTokenSource.Cancel();
+            _testCancellationTokenSource = null;
+            btnTestAllStrategies.Text = "🧪 Tüm Stratejileri Test Et";
+        }
+
+        // Önceki strateji listesini ve seçimi temizle
+        _availableStrategies.Clear();
+        _selectedStrategy = null;
+        lstStrategies.Items.Clear();
+        lblSelectedStrategy.Text = "Seçili Strateji: -";
+        lblSelectedStrategy.ForeColor = Color.Black;
+        lblTestResult.Text = "";
+        grpStrategyTest.Visible = false;
+
+        LogMessage("\n=== YENİ ELEMENT SEÇİMİ ===");
         LogMessage("Element seçimi başlatılıyor...");
         LogMessage("3 saniye içinde hedef UI elementinin üzerine mouse'u getirin...");
 
@@ -500,7 +679,7 @@ public partial class TaskChainRecorderForm : Form
         if (elementInfo == null)
         {
             LogMessage("HATA: Element yakalanamadı!");
-            MessageBox.Show("Element yakalanamadı! Lütfen tekrar deneyin.", "Hata",
+            ShowMessage("Element yakalanamadı! Lütfen tekrar deneyin.", "Hata",
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
             return;
         }
@@ -660,61 +839,105 @@ public partial class TaskChainRecorderForm : Form
 
     private async void btnTestAllStrategies_Click(object? sender, EventArgs e)
     {
-        if (_availableStrategies.Count == 0)
+        // Eğer test çalışıyorsa durdur
+        if (_testCancellationTokenSource != null)
         {
-            MessageBox.Show("Önce bir element seçin!", "Uyarı", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            LogMessage("\n⏹ Test durduruldu.");
+            _testCancellationTokenSource.Cancel();
+            _testCancellationTokenSource = null;
+            btnTestAllStrategies.Text = "🧪 Tüm Stratejileri Test Et";
             return;
         }
 
-        btnTestAllStrategies.Enabled = false;
-        btnTestAllStrategies.Text = "⏳ Test Ediliyor...";
+        if (_availableStrategies.Count == 0)
+        {
+            ShowMessage("Önce bir element seçin!", "Uyarı", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        // Yeni cancellation token oluştur
+        _testCancellationTokenSource = new CancellationTokenSource();
+        var cancellationToken = _testCancellationTokenSource.Token;
+
+        btnTestAllStrategies.Text = "⏹ Testi Durdur";
         LogMessage("\n=== STRATEJİ TESTLERİ BAŞLATILIYOR ===");
 
         lstStrategies.Items.Clear();
+        lblTestResult.Text = "⏳ Test ediliyor...";
+        lblTestResult.ForeColor = Color.Blue;
 
         int successCount = 0;
         int failCount = 0;
 
-        for (int i = 0; i < _availableStrategies.Count; i++)
+        try
         {
-            var strategy = _availableStrategies[i];
-            LogMessage($"Test #{i + 1}: {strategy.Name}...");
-
-            // Stratejiyi test et
-            var testedStrategy = await ElementLocatorTester.TestStrategy(strategy);
-            _availableStrategies[i] = testedStrategy;
-
-            // Sonucu göster
-            string icon = testedStrategy.IsSuccessful ? "✅" : "❌";
-            string result = testedStrategy.IsSuccessful
-                ? $"Başarılı ({testedStrategy.TestDurationMs}ms)"
-                : $"Başarısız: {testedStrategy.ErrorMessage}";
-
-            lstStrategies.Items.Add($"{icon} {testedStrategy.Name} - {result}");
-
-            if (testedStrategy.IsSuccessful)
+            for (int i = 0; i < _availableStrategies.Count; i++)
             {
-                successCount++;
-                LogMessage($"  ✅ Başarılı! ({testedStrategy.TestDurationMs}ms)");
-            }
-            else
-            {
-                failCount++;
-                LogMessage($"  ❌ Başarısız: {testedStrategy.ErrorMessage}");
+                // İptal kontrolü
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    LogMessage($"\n⚠ Test {i + 1}/{_availableStrategies.Count} adımında durduruldu.");
+                    break;
+                }
+
+                var strategy = _availableStrategies[i];
+                LogMessage($"Test #{i + 1}: {strategy.Name}...");
+
+                // DEBUG: Window bilgisini logla
+                if (_currentStep.UIElement != null)
+                {
+                    LogMessage($"  Window: {_currentStep.UIElement.WindowTitle ?? "N/A"}");
+                    LogMessage($"  ProcessId: {_currentStep.UIElement.WindowProcessId?.ToString() ?? "N/A"}");
+                }
+
+                // Stratejiyi test et (elementInfo ile hızlandırma)
+                var testedStrategy = await ElementLocatorTester.TestStrategy(strategy, _currentStep.UIElement);
+                _availableStrategies[i] = testedStrategy;
+
+                // Sonucu göster
+                string icon = testedStrategy.IsSuccessful ? "✅" : "❌";
+                string result = testedStrategy.IsSuccessful
+                    ? $"Başarılı ({testedStrategy.TestDurationMs}ms)"
+                    : $"Başarısız: {testedStrategy.ErrorMessage}";
+
+                lstStrategies.Items.Add($"{icon} {testedStrategy.Name} - {result}");
+
+                if (testedStrategy.IsSuccessful)
+                {
+                    successCount++;
+                    LogMessage($"  ✅ Başarılı! ({testedStrategy.TestDurationMs}ms)");
+                }
+                else
+                {
+                    failCount++;
+                    LogMessage($"  ❌ Başarısız: {testedStrategy.ErrorMessage}");
+                }
+
+                // UI güncellenmesi için kısa bekle
+                await Task.Delay(50, cancellationToken);
             }
 
-            // UI güncellenmesi için kısa bekle
-            await Task.Delay(50);
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                LogMessage($"\n✅ Test tamamlandı: {successCount} başarılı, {failCount} başarısız");
+                LogMessage("Bir strateji seçin ve 'Adımı Kaydet' butonuna tıklayın.");
+
+                // Sonucu label'da göster
+                lblTestResult.Text = $"✅ Test Tamamlandı - Başarılı: {successCount}, Başarısız: {failCount}";
+                lblTestResult.ForeColor = successCount > 0 ? Color.Green : Color.Orange;
+            }
         }
-
-        btnTestAllStrategies.Enabled = true;
-        btnTestAllStrategies.Text = "🧪 Tüm Stratejileri Test Et";
-
-        LogMessage($"\n✅ Test tamamlandı: {successCount} başarılı, {failCount} başarısız");
-        LogMessage("Bir strateji seçin ve 'Adımı Kaydet' butonuna tıklayın.");
-
-        MessageBox.Show($"Test tamamlandı!\n\nBaşarılı: {successCount}\nBaşarısız: {failCount}",
-            "Test Sonucu", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        catch (OperationCanceledException)
+        {
+            LogMessage("\n⏹ Test kullanıcı tarafından durduruldu.");
+            lblTestResult.Text = "⏹ Test durduruldu";
+            lblTestResult.ForeColor = Color.Gray;
+        }
+        finally
+        {
+            _testCancellationTokenSource = null;
+            btnTestAllStrategies.Text = "🧪 Tüm Stratejileri Test Et";
+        }
     }
 
     private void lstStrategies_SelectedIndexChanged(object? sender, EventArgs e)
@@ -740,5 +963,29 @@ public partial class TaskChainRecorderForm : Form
     private void btnClose_Click(object? sender, EventArgs e)
     {
         Close();
+    }
+
+    private void btnTopmost_Click(object? sender, EventArgs e)
+    {
+        this.TopMost = !this.TopMost;
+
+        if (this.TopMost)
+        {
+            btnTopmost.Text = "📌 En Üstte";
+            btnTopmost.BackColor = Color.LightGreen;
+        }
+        else
+        {
+            btnTopmost.Text = "📌 En Üstte Tut";
+            btnTopmost.BackColor = SystemColors.Control;
+        }
+    }
+
+    /// <summary>
+    /// MessageBox göster - Form topmost ise MessageBox da topmost olur
+    /// </summary>
+    private DialogResult ShowMessage(string text, string caption = "", MessageBoxButtons buttons = MessageBoxButtons.OK, MessageBoxIcon icon = MessageBoxIcon.None)
+    {
+        return MessageBox.Show(this, text, caption, buttons, icon);
     }
 }

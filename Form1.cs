@@ -9,6 +9,22 @@ public partial class Form1 : Form
     {
         InitializeComponent();
         _automation = new MedulaAutomation(LogMessage);
+
+        // Formu sağ alt köşede aç
+        this.Load += Form1_Load;
+    }
+
+    private void Form1_Load(object? sender, EventArgs e)
+    {
+        // Ekranın çalışma alanını al
+        var workingArea = Screen.PrimaryScreen!.WorkingArea;
+
+        // Formun sağ alt köşe pozisyonunu hesapla
+        this.StartPosition = FormStartPosition.Manual;
+        this.Location = new Point(
+            workingArea.Right - this.Width,
+            workingArea.Bottom - this.Height
+        );
     }
 
     private void LogMessage(string message)
@@ -116,5 +132,21 @@ public partial class Form1 : Form
     {
         var playerForm = new TaskChainPlayerForm();
         playerForm.ShowDialog();
+    }
+
+    private void btnTopmost_Click(object sender, EventArgs e)
+    {
+        this.TopMost = !this.TopMost;
+
+        if (this.TopMost)
+        {
+            btnTopmost.Text = "📌 En Üstte";
+            btnTopmost.BackColor = Color.LightGreen;
+        }
+        else
+        {
+            btnTopmost.Text = "📌 En Üstte Tut";
+            btnTopmost.BackColor = SystemColors.Control;
+        }
     }
 }

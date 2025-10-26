@@ -23,6 +23,9 @@ partial class TaskChainRecorderForm
         lblChainName = new Label();
         lblStepType = new Label();
 
+        // Buttons
+        btnTopmost = new Button();
+
         // TextBoxes
         txtChainName = new TextBox();
         txtLog = new TextBox();
@@ -54,6 +57,7 @@ partial class TaskChainRecorderForm
         btnTestAllStrategies = new Button();
         lstStrategies = new ListBox();
         lblSelectedStrategy = new Label();
+        lblTestResult = new Label();
 
         // Buttons
         btnSaveStep = new Button();
@@ -83,6 +87,18 @@ partial class TaskChainRecorderForm
         lblCurrentStep.Name = "lblCurrentStep";
         lblCurrentStep.Size = new Size(100, 21);
         lblCurrentStep.Text = "Adım: 1";
+
+        //
+        // btnTopmost
+        //
+        btnTopmost.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
+        btnTopmost.Location = new Point(1060, 20);
+        btnTopmost.Name = "btnTopmost";
+        btnTopmost.Size = new Size(110, 30);
+        btnTopmost.TabIndex = 99;
+        btnTopmost.Text = "📌 En Üstte Tut";
+        btnTopmost.UseVisualStyleBackColor = true;
+        btnTopmost.Click += btnTopmost_Click;
 
         //
         // lblChainName
@@ -312,6 +328,7 @@ partial class TaskChainRecorderForm
         grpStrategyTest.Controls.Add(btnTestAllStrategies);
         grpStrategyTest.Controls.Add(lstStrategies);
         grpStrategyTest.Controls.Add(lblSelectedStrategy);
+        grpStrategyTest.Controls.Add(lblTestResult);
 
         //
         // lblStrategyInfo
@@ -356,6 +373,17 @@ partial class TaskChainRecorderForm
         lblSelectedStrategy.Size = new Size(300, 15);
         lblSelectedStrategy.Text = "Seçili Strateji: Henüz seçilmedi";
         lblSelectedStrategy.ForeColor = Color.Blue;
+
+        //
+        // lblTestResult
+        //
+        lblTestResult.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
+        lblTestResult.Location = new Point(15, 350);
+        lblTestResult.Name = "lblTestResult";
+        lblTestResult.Size = new Size(420, 25);
+        lblTestResult.Text = "";
+        lblTestResult.TextAlign = ContentAlignment.MiddleLeft;
+        lblTestResult.ForeColor = Color.Black;
 
         //
         // txtLog
@@ -430,6 +458,7 @@ partial class TaskChainRecorderForm
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
         ClientSize = new Size(1190, 740);
+        Controls.Add(btnTopmost);
         Controls.Add(lblTitle);
         Controls.Add(lblCurrentStep);
         Controls.Add(lblChainName);
@@ -467,6 +496,7 @@ partial class TaskChainRecorderForm
     private Label lblCurrentStep;
     private Label lblChainName;
     private Label lblStepType;
+    private Button btnTopmost;
     private TextBox txtChainName;
     private TextBox txtLog;
     private ComboBox cmbStepType;
@@ -489,6 +519,7 @@ partial class TaskChainRecorderForm
     private Button btnTestAllStrategies;
     private ListBox lstStrategies;
     private Label lblSelectedStrategy;
+    private Label lblTestResult;
     private Button btnSaveStep;
     private Button btnTestStep;
     private Button btnNextStep;

@@ -348,8 +348,8 @@ public class TaskChainExecutor
     /// </summary>
     private AutomationElement? FindElementByStrategy(UIElementInfo elementInfo, ElementLocatorStrategy strategy)
     {
-        // ElementLocatorTester'dan fonksiyonu kullan
-        return ElementLocatorTester.FindElementByStrategy(strategy);
+        // ElementLocatorTester'dan fonksiyonu kullan (elementInfo ile hızlandırma)
+        return ElementLocatorTester.FindElementByStrategy(strategy, elementInfo);
     }
 
     /// <summary>
