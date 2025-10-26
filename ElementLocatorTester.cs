@@ -267,7 +267,7 @@ public class ElementLocatorTester
     /// <summary>
     /// Strateji kullanarak elementi bulmayı dener
     /// </summary>
-    private static AutomationElement? FindElementByStrategy(ElementLocatorStrategy strategy)
+    public static AutomationElement? FindElementByStrategy(ElementLocatorStrategy strategy)
     {
         switch (strategy.Type)
         {

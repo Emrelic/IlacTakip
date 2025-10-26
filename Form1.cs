@@ -111,4 +111,10 @@ public partial class Form1 : Form
         var recorderForm = new TaskChainRecorderForm();
         recorderForm.ShowDialog();
     }
+
+    private void btnTaskChainPlayer_Click(object sender, EventArgs e)
+    {
+        var playerForm = new TaskChainPlayerForm();
+        playerForm.ShowDialog();
+    }
 }

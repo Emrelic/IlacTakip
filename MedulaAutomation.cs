@@ -333,7 +333,7 @@ public class MedulaAutomation
             var centerX = (int)(rect.Left + rect.Width / 2);
             var centerY = (int)(rect.Top + rect.Height / 2);
             Log($"Mouse click pozisyonu: ({centerX}, {centerY})");
-            MouseClick(centerX, centerY);
+            MouseClickInstance(centerX, centerY);
             await Task.Delay(800);
             Log("✓ ComboBox mouse click ile açıldı");
         }
@@ -472,7 +472,7 @@ public class MedulaAutomation
             var centerX = (int)(rect.Left + rect.Width / 2);
             var centerY = (int)(rect.Top + rect.Height / 2);
             Log($"Mouse click pozisyonu: ({centerX}, {centerY})");
-            MouseClick(centerX, centerY);
+            MouseClickInstance(centerX, centerY);
             Log("✓ MouseClick ile seçildi");
         }
 
@@ -609,7 +609,7 @@ public class MedulaAutomation
             var centerY = (int)(rect.Top + rect.Height / 2);
 
             Log($"Mouse click yapılıyor: ({centerX}, {centerY})");
-            MouseClick(centerX, centerY);
+            MouseClickInstance(centerX, centerY);
             return;
         }
 
@@ -626,7 +626,7 @@ public class MedulaAutomation
             var rect = element.Current.BoundingRectangle;
             var centerX = (int)(rect.Left + rect.Width / 2);
             var centerY = (int)(rect.Top + rect.Height / 2);
-            MouseClick(centerX, centerY);
+            MouseClickInstance(centerX, centerY);
         }
     }
 
@@ -897,12 +897,17 @@ public class MedulaAutomation
     private const uint MOUSEEVENTF_RIGHTDOWN = 0x0008;
     private const uint MOUSEEVENTF_RIGHTUP = 0x0010;
 
-    private void MouseClick(int x, int y)
+    public static void MouseClick(int x, int y)
     {
         SetCursorPos(x, y);
         Thread.Sleep(50);
         mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0);
         mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
+    }
+
+    private void MouseClickInstance(int x, int y)
+    {
+        MouseClick(x, y);
     }
 
     private void MouseDoubleClick(int x, int y)

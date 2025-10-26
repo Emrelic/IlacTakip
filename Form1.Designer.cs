@@ -33,6 +33,7 @@ partial class Form1
         btnCGrubu = new Button();
         btnDebug = new Button();
         btnTaskChainRecorder = new Button();
+        btnTaskChainPlayer = new Button();
         lblStatus = new Label();
         txtLog = new TextBox();
         SuspendLayout();
@@ -88,9 +89,20 @@ partial class Form1
         btnTaskChainRecorder.Name = "btnTaskChainRecorder";
         btnTaskChainRecorder.Size = new Size(200, 40);
         btnTaskChainRecorder.TabIndex = 6;
-        btnTaskChainRecorder.Text = "Görev Zinciri Kaydedici";
+        btnTaskChainRecorder.Text = "📝 Görev Zinciri Kaydet";
         btnTaskChainRecorder.UseVisualStyleBackColor = true;
         btnTaskChainRecorder.Click += btnTaskChainRecorder_Click;
+        //
+        // btnTaskChainPlayer
+        //
+        btnTaskChainPlayer.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
+        btnTaskChainPlayer.Location = new Point(510, 550);
+        btnTaskChainPlayer.Name = "btnTaskChainPlayer";
+        btnTaskChainPlayer.Size = new Size(200, 40);
+        btnTaskChainPlayer.TabIndex = 7;
+        btnTaskChainPlayer.Text = "▶ Görev Zinciri Oynat";
+        btnTaskChainPlayer.UseVisualStyleBackColor = true;
+        btnTaskChainPlayer.Click += btnTaskChainPlayer_Click;
         //
         // lblStatus
         //
@@ -118,6 +130,7 @@ partial class Form1
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
         ClientSize = new Size(800, 610);
+        Controls.Add(btnTaskChainPlayer);
         Controls.Add(btnTaskChainRecorder);
         Controls.Add(txtLog);
         Controls.Add(btnDebug);
@@ -138,6 +151,7 @@ partial class Form1
     private Button btnCGrubu;
     private Button btnDebug;
     private Button btnTaskChainRecorder;
+    private Button btnTaskChainPlayer;
     private Label lblStatus;
     private TextBox txtLog;
 }
