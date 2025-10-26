@@ -1,0 +1,72 @@
+How found:	Mouse move (1110,155)
+	hwnd=0x0000000000060614 32bit class="Internet Explorer_Server" style=0xFFFFFFFFD6000000 ex=0x8C
+Name:	"A Grubu"
+ControlType:	UIA_ListItemControlTypeId (0xC357)
+LocalizedControlType:	"liste öğesi"
+BoundingRectangle:	{l:757 t:152 r:1161 b:165}
+IsEnabled:	true
+IsOffscreen:	false
+IsKeyboardFocusable:	true
+HasKeyboardFocus:	false
+AccessKey:	""
+ProcessId:	2844
+RuntimeId:	[2A.60614.4.EC.F00D.2]
+ProviderDescription:	"[pid:2844,providerId:0x0 Main(parent link):Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]"
+IsPassword:	false
+HelpText:	""
+IsDialog:	false
+LegacyIAccessible.ChildId:	2
+LegacyIAccessible.DefaultAction:	"Çift Tıklatma"
+LegacyIAccessible.Description:	""
+LegacyIAccessible.Help:	""
+LegacyIAccessible.KeyboardShortcut:	""
+LegacyIAccessible.Name:	"A Grubu"
+LegacyIAccessible.Role:	öğeleri listele (0x22)
+LegacyIAccessible.State:	odaklanabilir,seçilebilir (0x300000)
+LegacyIAccessible.Value:	""
+SelectionItem.IsSelected:	false
+SelectionItem.SelectionContainer:	"" liste
+IsAnnotationPatternAvailable:	false
+IsDragPatternAvailable:	false
+IsDockPatternAvailable:	false
+IsDropTargetPatternAvailable:	false
+IsExpandCollapsePatternAvailable:	false
+IsGridItemPatternAvailable:	false
+IsGridPatternAvailable:	false
+IsInvokePatternAvailable:	true
+IsItemContainerPatternAvailable:	false
+IsLegacyIAccessiblePatternAvailable:	true
+IsMultipleViewPatternAvailable:	false
+IsObjectModelPatternAvailable:	false
+IsRangeValuePatternAvailable:	false
+IsScrollItemPatternAvailable:	true
+IsScrollPatternAvailable:	false
+IsSelectionItemPatternAvailable:	true
+IsSelectionPatternAvailable:	false
+IsSpreadsheetItemPatternAvailable:	false
+IsSpreadsheetPatternAvailable:	false
+IsStylesPatternAvailable:	false
+IsSynchronizedInputPatternAvailable:	false
+IsTableItemPatternAvailable:	false
+IsTablePatternAvailable:	false
+IsTextChildPatternAvailable:	false
+IsTextEditPatternAvailable:	false
+IsTextPatternAvailable:	false
+IsTextPattern2Available:	false
+IsTogglePatternAvailable:	false
+IsTransformPatternAvailable:	false
+IsTransform2PatternAvailable:	false
+IsValuePatternAvailable:	false
+IsVirtualizedItemPatternAvailable:	false
+IsWindowPatternAvailable:	false
+IsCustomNavigationPatternAvailable:	false
+IsSelectionPattern2Available:	false
+FirstChild:	[null]
+LastChild:	[null]
+Next:	"A Grubu İçerikten İade" liste öğesi
+Previous:	"Seçiniz" liste öğesi
+Other Props:	Object has no additional properties
+Children:	Container has no children
+Ancestors:	"" liste
+	"Masaüstü 1" bölme
+	[ No Parent ]

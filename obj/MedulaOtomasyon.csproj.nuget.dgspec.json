@@ -50,6 +50,10 @@
         "net8.0-windows7.0": {
           "targetAlias": "net8.0-windows",
           "dependencies": {
+            "Microsoft.Playwright": {
+              "target": "Package",
+              "version": "[1.55.0, )"
+            },
             "System.Windows.Extensions": {
               "target": "Package",
               "version": "[8.0.0, )"
