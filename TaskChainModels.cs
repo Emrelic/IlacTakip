@@ -69,6 +69,13 @@ public class UIElementInfo
     public string? WindowProcessName { get; set; }
     public int? WindowProcessId { get; set; }
 
+    // === CONTAINER BİLGİLERİ (Element'in immediate parent container'ı - Pane, Group, vb) ===
+    public string? ContainerAutomationId { get; set; }
+    public string? ContainerName { get; set; }
+    public string? ContainerClassName { get; set; }
+    public string? ContainerControlType { get; set; }
+    public string? ContainerRuntimeId { get; set; }
+
     // === UI AUTOMATION ÖZELLİKLERİ ===
     public string? AutomationId { get; set; }
     public string? RuntimeId { get; set; } // Sistem tarafından atanmış geçici ID
@@ -157,6 +164,15 @@ public class UIElementInfo
     // === INDEX BİLGİLERİ (Aynı tipten çok varsa) ===
     public int? IndexInParent { get; set; } // Parent içindeki index
     public int? SiblingIndex { get; set; } // Aynı türdeki kardeşler arasında index
+
+    // === EK TANIMLAYICILAR (Name "1" gibi generic isimler için) ===
+    public string? Role { get; set; } // HTML role attribute
+    public string? TextContent { get; set; } // textContent (innerText'ten farklı, gizli metni de içerir)
+    public string? SiblingContext { get; set; } // Sibling elementlerin özeti (Name "1" için context)
+    public string? GrandParentName { get; set; } // 2. seviye parent (daha fazla context)
+    public string? GrandParentAutomationId { get; set; } // GrandParent'ın AutomationId'si
+    public string? ComputedCssPath { get; set; } // Hesaplanmış tam CSS path (body > div > span gibi)
+    public int? SiblingCount { get; set; } // Parent altındaki toplam sibling sayısı
 }
 
 /// <summary>
@@ -204,7 +220,9 @@ public enum LocatorType
     ClassNameAndIndex,
     Coordinates,
     HtmlId,
-    PlaywrightSelector
+    PlaywrightSelector,
+    NameAndControlTypeAndIndex,     // Name + ControlType + IndexInParent (duplicate name çözümü)
+    NameAndParentAndIndex           // Name + Parent + IndexInParent (duplicate name çözümü)
 }
 
 /// <summary>

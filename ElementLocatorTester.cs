@@ -74,6 +74,23 @@ public class ElementLocatorTester
                         ["ControlType"] = elementInfo.ControlType
                     }
                 });
+
+                // Name + ControlType + IndexInParent (duplicate name çözümü)
+                if (elementInfo.IndexInParent.HasValue)
+                {
+                    strategies.Add(new ElementLocatorStrategy
+                    {
+                        Name = "Name + ControlType + Index",
+                        Description = $"Name: '{elementInfo.Name}' + ControlType: '{elementInfo.ControlType}' + Index: {elementInfo.IndexInParent}",
+                        Type = LocatorType.NameAndControlTypeAndIndex,
+                        Properties = new Dictionary<string, string>
+                        {
+                            ["Name"] = elementInfo.Name,
+                            ["ControlType"] = elementInfo.ControlType,
+                            ["Index"] = elementInfo.IndexInParent.Value.ToString()
+                        }
+                    });
+                }
             }
 
             // Name + Parent.Name
@@ -90,6 +107,23 @@ public class ElementLocatorTester
                         ["ParentName"] = elementInfo.ParentName
                     }
                 });
+
+                // Name + Parent + IndexInParent (duplicate name çözümü)
+                if (elementInfo.IndexInParent.HasValue)
+                {
+                    strategies.Add(new ElementLocatorStrategy
+                    {
+                        Name = "Name + Parent + Index",
+                        Description = $"Name: '{elementInfo.Name}' + Parent: '{elementInfo.ParentName}' + Index: {elementInfo.IndexInParent}",
+                        Type = LocatorType.NameAndParentAndIndex,
+                        Properties = new Dictionary<string, string>
+                        {
+                            ["Name"] = elementInfo.Name,
+                            ["ParentName"] = elementInfo.ParentName,
+                            ["Index"] = elementInfo.IndexInParent.Value.ToString()
+                        }
+                    });
+                }
             }
         }
 
@@ -272,25 +306,103 @@ public class ElementLocatorTester
 
     /// <summary>
     /// Strateji kullanarak elementi bulmayı dener
+    /// MULTI-LEVEL FALLBACK: Container → Window → RootElement
     /// </summary>
     public static AutomationElement? FindElementByStrategy(ElementLocatorStrategy strategy, UIElementInfo? elementInfo = null)
     {
-        // Hedef pencereyi bul (varsa)
+        DebugLogger.LogBlankLine();
+        DebugLogger.Log("[ElementLocator] ===== ARAMA BAŞLIYOR =====");
+        DebugLogger.Log($"[ElementLocator] Strateji: {strategy.Name}");
+
+        // Container bilgisi varsa önce container'ı bul
+        AutomationElement? targetContainer = null;
         AutomationElement? targetWindow = null;
+
         if (elementInfo != null)
         {
-            targetWindow = FindTargetWindow(elementInfo);
+            DebugLogger.Log("[ElementLocator] ElementInfo mevcut:");
+            DebugLogger.Log($"  - WindowTitle: {elementInfo.WindowTitle ?? "N/A"}");
+            DebugLogger.Log($"  - WindowProcessId: {elementInfo.WindowProcessId?.ToString() ?? "N/A"}");
+            DebugLogger.Log($"  - ContainerControlType: {elementInfo.ContainerControlType ?? "N/A"}");
+            DebugLogger.Log($"  - ContainerName: {elementInfo.ContainerName ?? "N/A"}");
 
-            // Debug: Hedef pencere bulundu mu?
-            if (targetWindow == null && !string.IsNullOrEmpty(elementInfo.WindowTitle))
+            // 1. ÖNCE WINDOW BUL
+            targetWindow = FindTargetWindow(elementInfo);
+            if (targetWindow != null)
             {
-                // Hedef pencere bulunamadı - bu strateji başarısız olacak
-                System.Diagnostics.Debug.WriteLine($"[ElementLocator] UYARI: Hedef pencere bulunamadı: {elementInfo.WindowTitle}");
+                DebugLogger.Log($"[ElementLocator] ✓ Hedef Window bulundu: {targetWindow.Current.Name}");
+
+                // 2. CONTAINER BİLGİSİ VARSA CONTAINER'I BUL (Window içinde ara)
+                targetContainer = FindTargetContainer(elementInfo, targetWindow);
+                if (targetContainer != null)
+                {
+                    DebugLogger.Log($"[ElementLocator] ✓ Hedef Container bulundu: {targetContainer.Current.ControlType.ProgrammaticName} - {targetContainer.Current.Name}");
+                }
+                else if (!string.IsNullOrEmpty(elementInfo.ContainerControlType))
+                {
+                    DebugLogger.Log($"[ElementLocator] ⚠ Container bilgisi var ama bulunamadı: {elementInfo.ContainerControlType}");
+                }
+            }
+            else if (!string.IsNullOrEmpty(elementInfo.WindowTitle))
+            {
+                DebugLogger.Log($"[ElementLocator] ⚠ Hedef Window bulunamadı: {elementInfo.WindowTitle}");
             }
         }
 
-        // Arama kapsam rootunu belirle
-        var searchRoot = targetWindow ?? AutomationElement.RootElement;
+        // 3. ARAMA STRATEJİSİ: Container → Window → RootElement (Multi-level fallback)
+        AutomationElement? foundElement = null;
+
+        // Level 1: Container içinde ara (en dar kapsam - en hızlı)
+        if (targetContainer != null)
+        {
+            DebugLogger.Log("[ElementLocator] [Level 1] Container içinde aranıyor...");
+            foundElement = FindByStrategyInScope(strategy, targetContainer);
+            if (foundElement != null)
+            {
+                DebugLogger.Log("[ElementLocator] ✅ Container içinde BULUNDU!");
+                return foundElement;
+            }
+            DebugLogger.Log("[ElementLocator] ⚠ Container içinde bulunamadı, Window'da aranacak...");
+        }
+
+        // Level 2: Window içinde ara (orta kapsam)
+        if (targetWindow != null)
+        {
+            DebugLogger.Log("[ElementLocator] [Level 2] Window içinde aranıyor...");
+            foundElement = FindByStrategyInScope(strategy, targetWindow);
+            if (foundElement != null)
+            {
+                DebugLogger.Log("[ElementLocator] ✅ Window içinde BULUNDU!");
+                return foundElement;
+            }
+            DebugLogger.Log("[ElementLocator] ⚠ Window içinde bulunamadı, RootElement'te aranacak...");
+        }
+
+        // Level 3: RootElement'te ara (fallback - tüm desktop)
+        DebugLogger.Log("[ElementLocator] [Level 3] RootElement (Desktop) içinde aranıyor...");
+        foundElement = FindByStrategyInScope(strategy, AutomationElement.RootElement);
+        if (foundElement != null)
+        {
+            DebugLogger.Log("[ElementLocator] ✅ RootElement içinde BULUNDU!");
+            return foundElement;
+        }
+
+        DebugLogger.Log("[ElementLocator] ❌ Hiçbir yerde bulunamadı!");
+        return null;
+    }
+
+    /// <summary>
+    /// Belirtilen scope içinde stratejiyi uygular
+    /// </summary>
+    private static AutomationElement? FindByStrategyInScope(ElementLocatorStrategy strategy, AutomationElement searchRoot)
+    {
+        // Debug: Hangi değer aranıyor?
+        string searchValue = "";
+        if (strategy.Properties.Count > 0)
+        {
+            searchValue = string.Join(", ", strategy.Properties.Select(p => $"{p.Key}={p.Value}"));
+            DebugLogger.Log($"  → Aranan değer: {searchValue}");
+        }
 
         switch (strategy.Type)
         {
@@ -318,6 +430,18 @@ public class ElementLocatorTester
                     strategy.Properties["Name"],
                     strategy.Properties["ParentName"], searchRoot);
 
+            case LocatorType.NameAndControlTypeAndIndex:
+                return FindByNameAndControlTypeAndIndex(
+                    strategy.Properties["Name"],
+                    strategy.Properties["ControlType"],
+                    int.Parse(strategy.Properties["Index"]), searchRoot);
+
+            case LocatorType.NameAndParentAndIndex:
+                return FindByNameAndParentAndIndex(
+                    strategy.Properties["Name"],
+                    strategy.Properties["ParentName"],
+                    int.Parse(strategy.Properties["Index"]), searchRoot);
+
             case LocatorType.ClassNameAndIndex:
                 return FindByClassNameAndIndex(
                     strategy.Properties["ClassName"],
@@ -339,10 +463,10 @@ public class ElementLocatorTester
                 return FindByHtmlId(strategy.Properties["HtmlId"], searchRoot);
 
             case LocatorType.PlaywrightSelector:
-                // Playwright selector - UI Automation ile yaklaşık eşleşme dene
                 return FindByPlaywrightSelector(strategy.Properties["PlaywrightSelector"], searchRoot);
 
             case LocatorType.Coordinates:
+                // Koordinat araması searchRoot'tan bağımsızdır
                 return FindByCoordinates(
                     int.Parse(strategy.Properties["X"]),
                     int.Parse(strategy.Properties["Y"]));
@@ -350,6 +474,157 @@ public class ElementLocatorTester
             default:
                 return null;
         }
+    }
+
+    /// <summary>
+    /// UIElementInfo'dan hedef container'ı bulur (Window içinde)
+    /// </summary>
+    private static AutomationElement? FindTargetContainer(UIElementInfo elementInfo, AutomationElement targetWindow)
+    {
+        try
+        {
+            // Container bilgisi yoksa null dön
+            if (string.IsNullOrEmpty(elementInfo.ContainerControlType))
+            {
+                return null;
+            }
+
+            DebugLogger.Log($"[FindTargetContainer] Container aranıyor: {elementInfo.ContainerControlType}");
+
+            // Container ControlType'ı parse et
+            var containerControlType = ParseControlType(elementInfo.ContainerControlType);
+            if (containerControlType == null)
+            {
+                DebugLogger.Log($"[FindTargetContainer] ControlType parse edilemedi: {elementInfo.ContainerControlType}");
+                return null;
+            }
+
+            // *** YENİ STRATEJI 1: INDEX BAZLI HIZLI ARAMA (Direct Children Only) ***
+            // Yapı analizinde container'ın Window'un direct child'ı olduğunu gördük
+            // TreeScope.Descendants yerine TreeScope.Children kullanarak çok daha hızlı arama yapabiliriz
+            if (!string.IsNullOrEmpty(elementInfo.ContainerAutomationId) || !string.IsNullOrEmpty(elementInfo.ContainerName))
+            {
+                DebugLogger.Log("[FindTargetContainer] 🚀 INDEX bazlı hızlı arama yapılıyor (Direct Children Only)...");
+                try
+                {
+                    var children = targetWindow.FindAll(TreeScope.Children, Condition.TrueCondition);
+                    DebugLogger.Log($"[FindTargetContainer] Window'un {children.Count} direct child'ı bulundu");
+
+                    int index = 0;
+                    foreach (AutomationElement child in children)
+                    {
+                        try
+                        {
+                            // AutomationId match?
+                            if (!string.IsNullOrEmpty(elementInfo.ContainerAutomationId) &&
+                                child.Current.AutomationId == elementInfo.ContainerAutomationId &&
+                                child.Current.ControlType == containerControlType)
+                            {
+                                DebugLogger.Log($"[FindTargetContainer] ✅ INDEX bazlı arama ile BULUNDU! (Index: {index}, AutomationId: {elementInfo.ContainerAutomationId})");
+                                return child;
+                            }
+
+                            // Name match?
+                            if (!string.IsNullOrEmpty(elementInfo.ContainerName) &&
+                                child.Current.Name == elementInfo.ContainerName &&
+                                child.Current.ControlType == containerControlType)
+                            {
+                                DebugLogger.Log($"[FindTargetContainer] ✅ INDEX bazlı arama ile BULUNDU! (Index: {index}, Name: {elementInfo.ContainerName})");
+                                return child;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            DebugLogger.Log($"[FindTargetContainer] ⚠ Child {index} okunamadı: {ex.Message}");
+                        }
+                        index++;
+                    }
+
+                    DebugLogger.Log("[FindTargetContainer] ⚠ INDEX bazlı aramada bulunamadı, yavaş aramaya geçiliyor...");
+                }
+                catch (Exception ex)
+                {
+                    DebugLogger.Log($"[FindTargetContainer] INDEX arama hatası: {ex.Message}");
+                }
+            }
+
+            // *** ESKİ STRATEJI: YAVAŞ RECURSIVE ARAMA (Fallback) ***
+            // AutomationId ile ara (en güvenilir)
+            if (!string.IsNullOrEmpty(elementInfo.ContainerAutomationId))
+            {
+                DebugLogger.Log($"[FindTargetContainer] ContainerAutomationId ile aranıyor: {elementInfo.ContainerAutomationId}");
+                var condition = new AndCondition(
+                    new PropertyCondition(AutomationElement.AutomationIdProperty, elementInfo.ContainerAutomationId),
+                    new PropertyCondition(AutomationElement.ControlTypeProperty, containerControlType)
+                );
+                var container = FindWithTimeout(targetWindow, TreeScope.Descendants, condition, 5000);
+                if (container != null)
+                {
+                    DebugLogger.Log("[FindTargetContainer] ✓ AutomationId ile bulundu");
+                    return container;
+                }
+                else
+                {
+                    DebugLogger.Log("[FindTargetContainer] ✗ AutomationId ile bulunamadı");
+                }
+            }
+
+            // Name ile ara
+            if (!string.IsNullOrEmpty(elementInfo.ContainerName))
+            {
+                DebugLogger.Log($"[FindTargetContainer] ContainerName ile aranıyor: {elementInfo.ContainerName}");
+                var condition = new AndCondition(
+                    new PropertyCondition(AutomationElement.NameProperty, elementInfo.ContainerName),
+                    new PropertyCondition(AutomationElement.ControlTypeProperty, containerControlType)
+                );
+                var container = FindWithTimeout(targetWindow, TreeScope.Descendants, condition, 5000);
+                if (container != null)
+                {
+                    DebugLogger.Log("[FindTargetContainer] ✓ Name ile bulundu");
+                    return container;
+                }
+                else
+                {
+                    DebugLogger.Log("[FindTargetContainer] ✗ Name ile bulunamadı");
+                }
+            }
+
+            // ClassName ile ara (SON ÇARE - ancak güvenilir değil!)
+            // WinForms'da ClassName çok generic olabilir, yanlış container bulabilir
+            if (!string.IsNullOrEmpty(elementInfo.ContainerClassName))
+            {
+                DebugLogger.Log($"[FindTargetContainer] ⚠ ClassName ile arama GÜVENİLİR DEĞİL (çok generic)");
+                DebugLogger.Log($"[FindTargetContainer] ClassName: {elementInfo.ContainerClassName}");
+
+                // WinForms generic class name'leri atla
+                if (elementInfo.ContainerClassName.StartsWith("WindowsForms10."))
+                {
+                    DebugLogger.Log("[FindTargetContainer] ✗ WinForms generic ClassName - GÜVENİLİR DEĞİL, atlanıyor");
+                }
+                else
+                {
+                    // Sadece unique ClassName'ler için ara
+                    var condition = new AndCondition(
+                        new PropertyCondition(AutomationElement.ClassNameProperty, elementInfo.ContainerClassName),
+                        new PropertyCondition(AutomationElement.ControlTypeProperty, containerControlType)
+                    );
+                    var container = FindWithTimeout(targetWindow, TreeScope.Descendants, condition, 2000);
+                    if (container != null)
+                    {
+                        DebugLogger.Log("[FindTargetContainer] ✓ ClassName ile bulundu (unique ClassName)");
+                        return container;
+                    }
+                }
+            }
+
+            DebugLogger.Log("[FindTargetContainer] ✗ Container bulunamadı (doğrudan Window'da aranacak)");
+        }
+        catch (Exception ex)
+        {
+            DebugLogger.Log($"[FindTargetContainer] Exception: {ex.Message}");
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -361,24 +636,24 @@ public class ElementLocatorTester
         {
             if (!string.IsNullOrEmpty(elementInfo.WindowTitle))
             {
-                System.Diagnostics.Debug.WriteLine($"[FindTargetWindow] WindowTitle ile arama: {elementInfo.WindowTitle}");
+                DebugLogger.Log($"[FindTargetWindow] WindowTitle ile arama: {elementInfo.WindowTitle}");
                 var condition = new PropertyCondition(AutomationElement.NameProperty, elementInfo.WindowTitle);
                 var window = AutomationElement.RootElement.FindFirst(TreeScope.Children, condition);
 
                 if (window != null)
                 {
-                    System.Diagnostics.Debug.WriteLine($"[FindTargetWindow] ✓ Pencere bulundu: {window.Current.Name}");
+                    DebugLogger.Log($"[FindTargetWindow] ✓ Pencere bulundu: {window.Current.Name}");
                 }
                 else
                 {
-                    System.Diagnostics.Debug.WriteLine($"[FindTargetWindow] ✗ Pencere bulunamadı: {elementInfo.WindowTitle}");
+                    DebugLogger.Log($"[FindTargetWindow] ✗ Pencere bulunamadı: {elementInfo.WindowTitle}");
                 }
 
                 return window;
             }
             else if (elementInfo.WindowProcessId.HasValue)
             {
-                System.Diagnostics.Debug.WriteLine($"[FindTargetWindow] ProcessId ile arama: {elementInfo.WindowProcessId.Value}");
+                DebugLogger.Log($"[FindTargetWindow] ProcessId ile arama: {elementInfo.WindowProcessId.Value}");
                 var windows = AutomationElement.RootElement.FindAll(TreeScope.Children,
                     new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Window));
 
@@ -388,18 +663,18 @@ public class ElementLocatorTester
                     {
                         if (window.Current.ProcessId == elementInfo.WindowProcessId.Value)
                         {
-                            System.Diagnostics.Debug.WriteLine($"[FindTargetWindow] ✓ Pencere bulundu (ProcessId): {window.Current.Name}");
+                            DebugLogger.Log($"[FindTargetWindow] ✓ Pencere bulundu (ProcessId): {window.Current.Name}");
                             return window;
                         }
                     }
                     catch { }
                 }
-                System.Diagnostics.Debug.WriteLine($"[FindTargetWindow] ✗ ProcessId ile pencere bulunamadı");
+                DebugLogger.Log("[FindTargetWindow] ✗ ProcessId ile pencere bulunamadı");
             }
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[FindTargetWindow] Exception: {ex.Message}");
+            DebugLogger.Log($"[FindTargetWindow] Exception: {ex.Message}");
         }
 
         return null;
@@ -442,14 +717,20 @@ public class ElementLocatorTester
 
     private static AutomationElement? FindByAutomationId(string automationId, AutomationElement searchRoot)
     {
+        DebugLogger.Log($"    [FindByAutomationId] Aranıyor: '{automationId}'");
         var condition = new PropertyCondition(AutomationElement.AutomationIdProperty, automationId);
-        return FindWithTimeout(searchRoot, TreeScope.Descendants, condition);
+        var result = FindWithTimeout(searchRoot, TreeScope.Descendants, condition);
+        DebugLogger.Log($"    [FindByAutomationId] Sonuç: {(result != null ? "BULUNDU ✓" : "BULUNAMADI ✗")}");
+        return result;
     }
 
     private static AutomationElement? FindByName(string name, AutomationElement searchRoot)
     {
+        DebugLogger.Log($"    [FindByName] Aranıyor: '{name}'");
         var condition = new PropertyCondition(AutomationElement.NameProperty, name);
-        return FindWithTimeout(searchRoot, TreeScope.Descendants, condition);
+        var result = FindWithTimeout(searchRoot, TreeScope.Descendants, condition);
+        DebugLogger.Log($"    [FindByName] Sonuç: {(result != null ? "BULUNDU ✓" : "BULUNAMADI ✗")}");
+        return result;
     }
 
     private static AutomationElement? FindByClassName(string className, AutomationElement searchRoot)
@@ -493,6 +774,114 @@ public class ElementLocatorTester
         // Parent içinde child'ı bul
         var childCondition = new PropertyCondition(AutomationElement.NameProperty, name);
         return FindWithTimeout(parent, TreeScope.Descendants, childCondition);
+    }
+
+    private static AutomationElement? FindByNameAndControlTypeAndIndex(string name, string controlTypeStr, int index, AutomationElement searchRoot)
+    {
+        // Name + ControlType + IndexInParent ile bul
+        // Bu duplicate name problemini çözer (örn: birden fazla "1" button varsa)
+        try
+        {
+            var controlType = ParseControlType(controlTypeStr);
+            if (controlType == null) return null;
+
+            var condition = new AndCondition(
+                new PropertyCondition(AutomationElement.NameProperty, name),
+                new PropertyCondition(AutomationElement.ControlTypeProperty, controlType)
+            );
+
+            // Tüm matching elementleri bul
+            var task = Task.Run(() =>
+            {
+                try
+                {
+                    return searchRoot.FindAll(TreeScope.Descendants, condition);
+                }
+                catch
+                {
+                    return null;
+                }
+            });
+
+            if (task.Wait(3000) && task.Result != null)
+            {
+                var elements = task.Result;
+
+                // Her element için IndexInParent kontrol et
+                foreach (AutomationElement element in elements)
+                {
+                    try
+                    {
+                        var parent = TreeWalker.RawViewWalker.GetParent(element);
+                        if (parent != null)
+                        {
+                            var siblings = parent.FindAll(TreeScope.Children, Condition.TrueCondition);
+                            for (int i = 0; i < siblings.Count; i++)
+                            {
+                                if (Automation.Compare(siblings[i], element))
+                                {
+                                    if (i == index)
+                                    {
+                                        return element; // Index eşleşti!
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    catch { }
+                }
+            }
+        }
+        catch { }
+
+        return null;
+    }
+
+    private static AutomationElement? FindByNameAndParentAndIndex(string name, string parentName, int index, AutomationElement searchRoot)
+    {
+        // Name + Parent + IndexInParent ile bul
+        // Bu duplicate name problemini çözer (örn: birden fazla "1" varsa ama farklı parent'larda)
+        try
+        {
+            // Önce parent'ı bul
+            var parentCondition = new PropertyCondition(AutomationElement.NameProperty, parentName);
+            var parent = FindWithTimeout(searchRoot, TreeScope.Descendants, parentCondition);
+
+            if (parent == null) return null;
+
+            // Parent'ın children'ını al
+            var children = parent.FindAll(TreeScope.Children, Condition.TrueCondition);
+
+            // Index'teki child'ı bul ve name kontrolü yap
+            foreach (AutomationElement child in children)
+            {
+                try
+                {
+                    // Child'ın indexini bul
+                    var childParent = TreeWalker.RawViewWalker.GetParent(child);
+                    if (childParent != null && Automation.Compare(childParent, parent))
+                    {
+                        var siblings = childParent.FindAll(TreeScope.Children, Condition.TrueCondition);
+                        for (int i = 0; i < siblings.Count; i++)
+                        {
+                            if (Automation.Compare(siblings[i], child))
+                            {
+                                if (i == index && child.Current.Name == name)
+                                {
+                                    return child; // Index ve Name eşleşti!
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+                catch { }
+            }
+        }
+        catch { }
+
+        return null;
     }
 
     private static ControlType? ParseControlType(string controlTypeStr)
@@ -574,8 +963,41 @@ public class ElementLocatorTester
     private static AutomationElement? FindByTreePath(string treePath, AutomationElement searchRoot)
     {
         // TreePath formatı: "0/2/5/1" (index bazlı)
-        // Zorlu implementasyon - şimdilik null
-        return null;
+        // TreePath RootElement'ten başlar, searchRoot parametresi ignore edilir
+        try
+        {
+            var indices = treePath.Split('/', StringSplitOptions.RemoveEmptyEntries)
+                .Select(int.Parse)
+                .ToArray();
+
+            if (indices.Length == 0)
+            {
+                return null;
+            }
+
+            // RootElement'ten başla (TreePath her zaman RootElement'ten oluşturulur)
+            var current = AutomationElement.RootElement;
+
+            // Her index ile child navigate et
+            foreach (var index in indices)
+            {
+                var children = current.FindAll(TreeScope.Children, Condition.TrueCondition);
+
+                if (index >= children.Count)
+                {
+                    // Index out of range - element bulunamadı
+                    return null;
+                }
+
+                current = children[index];
+            }
+
+            return current;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private static AutomationElement? FindByXPath(string xpath, AutomationElement searchRoot)

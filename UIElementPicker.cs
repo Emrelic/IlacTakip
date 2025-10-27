@@ -155,6 +155,31 @@ public class UIElementPicker
             }
             catch { }
 
+            // === CONTAINER BİLGİLERİ (Element'in immediate parent container'ı - Pane, Group, vb) ===
+            try
+            {
+                var container = GetImmediateContainer(element);
+                if (container != null)
+                {
+                    info.ContainerAutomationId = container.Current.AutomationId;
+                    info.ContainerName = container.Current.Name;
+                    info.ContainerClassName = container.Current.ClassName;
+                    info.ContainerControlType = container.Current.ControlType.ProgrammaticName;
+
+                    // Container RuntimeId
+                    try
+                    {
+                        var containerRuntimeId = container.GetRuntimeId();
+                        if (containerRuntimeId != null)
+                        {
+                            info.ContainerRuntimeId = string.Join(",", containerRuntimeId);
+                        }
+                    }
+                    catch { }
+                }
+            }
+            catch { }
+
             // === HİYERARŞİ VE PATH ===
             info.ElementPath = BuildElementPath(element);
             info.TreePath = BuildTreePath(element);
@@ -175,6 +200,62 @@ public class UIElementPicker
 
             // === INDEX BİLGİLERİ ===
             info.IndexInParent = GetIndexInParent(element);
+
+            // === EK TANIMLAYICILAR (Generic Name için) ===
+            // GrandParent bilgileri
+            try
+            {
+                var parent = TreeWalker.RawViewWalker.GetParent(element);
+                if (parent != null && parent != AutomationElement.RootElement)
+                {
+                    var grandParent = TreeWalker.RawViewWalker.GetParent(parent);
+                    if (grandParent != null && grandParent != AutomationElement.RootElement)
+                    {
+                        info.GrandParentName = grandParent.Current.Name;
+                        info.GrandParentAutomationId = grandParent.Current.AutomationId;
+                    }
+                }
+            }
+            catch { }
+
+            // Sibling context ve count
+            try
+            {
+                var parent = TreeWalker.RawViewWalker.GetParent(element);
+                if (parent != null)
+                {
+                    var siblings = parent.FindAll(TreeScope.Children, Condition.TrueCondition);
+                    info.SiblingCount = siblings.Count;
+
+                    // Sibling context: İlk 5 sibling'in Name'lerini topla
+                    var siblingNames = new List<string>();
+                    for (int i = 0; i < Math.Min(5, siblings.Count); i++)
+                    {
+                        try
+                        {
+                            var sibling = siblings[i];
+                            var sibName = sibling.Current.Name;
+                            var sibCtrlType = sibling.Current.ControlType.ProgrammaticName.Replace("ControlType.", "");
+
+                            if (!string.IsNullOrEmpty(sibName))
+                            {
+                                siblingNames.Add($"{sibCtrlType}[{sibName}]");
+                            }
+                            else
+                            {
+                                siblingNames.Add(sibCtrlType);
+                            }
+                        }
+                        catch { }
+                    }
+
+                    if (siblingNames.Count > 0)
+                    {
+                        info.SiblingContext = string.Join(", ", siblingNames);
+                    }
+                }
+            }
+            catch { }
 
             // === ETİKET VE İLİŞKİLER ===
             try
@@ -213,8 +294,10 @@ public class UIElementPicker
                 }
             }
 
-            // Teknoloji 3: MSHTML (Internet Explorer için)
-            else if (info.FrameworkId == "InternetExplorer")
+            // Teknoloji 3: MSHTML (Internet Explorer + WebBrowser Control için)
+            // WinForms/Win32 WebBrowser control da MSHTML kullanır
+            bool isWebBrowserElement = IsWebBrowserElement(element, info);
+            if (info.FrameworkId == "InternetExplorer" || isWebBrowserElement)
             {
                 ExtractWebProperties(element, info);
 
@@ -225,7 +308,7 @@ public class UIElementPicker
                     // Detection method güncelle
                     if (!string.IsNullOrEmpty(info.CssSelector) || !string.IsNullOrEmpty(info.XPath))
                     {
-                        info.DetectionMethod = "UIAutomation+MSHTML";
+                        info.DetectionMethod = isWebBrowserElement ? "UIAutomation+MSHTML(WebBrowser)" : "UIAutomation+MSHTML";
                     }
                 }
                 catch
@@ -334,6 +417,69 @@ public class UIElementPicker
         return null;
     }
 
+    /// <summary>
+    /// Element'in immediate parent container'ını bulur (Pane, Group, Document vb.)
+    /// Bu container, botanik overlay gibi farklı yapıların tespiti için kritik
+    /// </summary>
+    private static AutomationElement? GetImmediateContainer(AutomationElement element)
+    {
+        try
+        {
+            var parent = TreeWalker.RawViewWalker.GetParent(element);
+            if (parent == null || parent == AutomationElement.RootElement)
+            {
+                return null;
+            }
+
+            // Parent doğrudan Window ise, Container olarak kullanma (zaten window bilgisi var)
+            // Bunun yerine parent'ın parent'ına bak
+            if (parent.Current.ControlType == ControlType.Window)
+            {
+                return null; // Window container değil
+            }
+
+            // Pane, Group, Document gibi container tipler
+            var containerTypes = new[]
+            {
+                ControlType.Pane,
+                ControlType.Group,
+                ControlType.Document,
+                ControlType.Custom,
+                ControlType.Tab,
+                ControlType.TabItem
+            };
+
+            // Parent'ı container olarak kabul et
+            if (containerTypes.Contains(parent.Current.ControlType))
+            {
+                return parent;
+            }
+
+            // Değilse, parent'ın parent'ına bak (max 3 seviye yukarı)
+            for (int i = 0; i < 3; i++)
+            {
+                parent = TreeWalker.RawViewWalker.GetParent(parent);
+                if (parent == null || parent == AutomationElement.RootElement)
+                {
+                    break;
+                }
+
+                if (parent.Current.ControlType == ControlType.Window)
+                {
+                    break; // Window'a ulaştık, container yok
+                }
+
+                if (containerTypes.Contains(parent.Current.ControlType))
+                {
+                    return parent;
+                }
+            }
+        }
+        catch { }
+
+        return null;
+    }
+
     private static string BuildElementPath(AutomationElement element)
     {
         var parts = new List<string>();
@@ -398,5 +544,47 @@ public class UIElementPicker
         catch { }
 
         return string.Join(" > ", chain);
+    }
+
+    /// <summary>
+    /// WinForms/Win32 WebBrowser control içindeki element mi kontrol et
+    /// Botanik gibi overlay uygulamalar WebBrowser control kullanır
+    /// </summary>
+    private static bool IsWebBrowserElement(AutomationElement element, UIElementInfo info)
+    {
+        try
+        {
+            // WinForms veya Win32 framework'ü kontrolü
+            if (info.FrameworkId != "Win32" && info.FrameworkId != "WinForms")
+            {
+                return false;
+            }
+
+            // Window handle'ını al
+            var hwnd = new IntPtr(element.Current.NativeWindowHandle);
+            if (hwnd == IntPtr.Zero)
+            {
+                // Parent window'dan bul
+                var window = GetParentWindow(element);
+                if (window != null)
+                {
+                    hwnd = new IntPtr(window.Current.NativeWindowHandle);
+                }
+            }
+
+            if (hwnd == IntPtr.Zero)
+            {
+                return false;
+            }
+
+            // IE_Server window varlığını kontrol et
+            // MSHTMLExtractor'daki FindIEServerWindow metodu hierarchy'de IE_Server arar
+            var ieServerHwnd = MSHTMLExtractor.FindIEServerWindow(hwnd);
+            return ieServerHwnd != IntPtr.Zero;
+        }
+        catch
+        {
+            return false;
+        }
     }
 }

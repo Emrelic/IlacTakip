@@ -142,6 +142,20 @@ public static class MSHTMLExtractor
                 info.InnerHtml = htmlElement.innerHTML ?? "";
                 info.Title = htmlElement.title ?? "";
                 info.ClassName = htmlElement.className ?? "";
+
+                // OuterHtml (element'in kendisi dahil tam HTML)
+                try
+                {
+                    info.OuterHtml = htmlElement.outerHTML ?? "";
+                }
+                catch { }
+
+                // TextContent (innerText'ten farklı - gizli metinleri de içerir)
+                try
+                {
+                    info.TextContent = htmlElement.textContent ?? "";
+                }
+                catch { }
             }
             catch { }
 
@@ -224,6 +238,15 @@ public static class MSHTMLExtractor
                                         break;
                                     case "placeholder":
                                         info.Placeholder = attrValue;
+                                        break;
+                                    case "role":
+                                        info.Role = attrValue;
+                                        break;
+                                    case "title":
+                                        if (string.IsNullOrEmpty(info.Title))
+                                        {
+                                            info.Title = attrValue;
+                                        }
                                         break;
                                     default:
                                         info.OtherAttributes[attrName] = attrValue;
@@ -398,7 +421,7 @@ public static class MSHTMLExtractor
     /// <summary>
     /// IE_Server child window'unu bulur
     /// </summary>
-    private static IntPtr FindIEServerWindow(IntPtr hwndParent)
+    public static IntPtr FindIEServerWindow(IntPtr hwndParent)
     {
         try
         {

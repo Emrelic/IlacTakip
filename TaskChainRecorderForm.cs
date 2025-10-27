@@ -630,6 +630,140 @@ public partial class TaskChainRecorderForm : Form
         }
     }
 
+    private async void btnAnalyzeStructure_Click(object? sender, EventArgs e)
+    {
+        LogMessage("\n🔍 === YAPI ANALİZİ BAŞLATILIYOR ===");
+        LogMessage("5 saniye içinde analiz edilecek pencereyi aktif hale getirin...");
+
+        btnAnalyzeStructure.Enabled = false;
+
+        try
+        {
+            await Task.Delay(5000);
+
+            // Aktif pencereyi yakala
+            var foregroundWindow = AutomationElement.FocusedElement;
+            if (foregroundWindow == null)
+            {
+                LogMessage("❌ Aktif pencere bulunamadı!");
+                return;
+            }
+
+            // Window elementini bul
+            var window = foregroundWindow;
+            while (window != null && window.Current.ControlType != ControlType.Window)
+            {
+                try
+                {
+                    window = TreeWalker.RawViewWalker.GetParent(window);
+                }
+                catch
+                {
+                    break;
+                }
+            }
+
+            if (window == null)
+            {
+                LogMessage("❌ Window elementi bulunamadı!");
+                return;
+            }
+
+            LogMessage($"✅ Pencere yakalandı: {window.Current.Name}");
+            LogMessage($"   ProcessId: {window.Current.ProcessId}");
+            LogMessage($"   ClassName: {window.Current.ClassName}");
+            LogMessage("");
+
+            // Window'un tüm child elementlerini analiz et
+            LogMessage("📊 WINDOW YAPISINI ANALİZ EDİYORUM...");
+            LogMessage("━".PadRight(80, '━'));
+
+            AnalyzeElementTree(window, 0, 1);
+
+            LogMessage("━".PadRight(80, '━'));
+            LogMessage("✅ Yapı analizi tamamlandı!");
+            LogMessage("");
+            LogMessage("💡 İpucu: Container'ları ve element isimlerini not alın.");
+            LogMessage("   Element seçerken bu bilgileri kullanabilirsiniz.");
+        }
+        catch (Exception ex)
+        {
+            LogMessage($"❌ Hata: {ex.Message}");
+        }
+        finally
+        {
+            btnAnalyzeStructure.Enabled = true;
+        }
+    }
+
+    private void AnalyzeElementTree(AutomationElement element, int level, int maxDepth)
+    {
+        if (level >= maxDepth) return;
+
+        try
+        {
+            var indent = new string(' ', level * 2);
+            var children = element.FindAll(TreeScope.Children, Condition.TrueCondition);
+
+            LogMessage($"{indent}📁 Level {level}: {children.Count} child element bulundu");
+            LogMessage("");
+
+            int index = 0;
+            foreach (AutomationElement child in children)
+            {
+                try
+                {
+                    var controlType = child.Current.ControlType.ProgrammaticName.Replace("ControlType.", "");
+                    var name = string.IsNullOrEmpty(child.Current.Name) ? "(isimsiz)" : child.Current.Name;
+                    var automationId = string.IsNullOrEmpty(child.Current.AutomationId) ? "(ID yok)" : child.Current.AutomationId;
+                    var className = string.IsNullOrEmpty(child.Current.ClassName) ? "(class yok)" : child.Current.ClassName;
+
+                    // Önemli container'ları vurgula
+                    var isImportant = controlType == "Pane" || controlType == "Document" || controlType == "Group" || controlType == "Custom";
+                    var marker = isImportant ? "⭐" : "  ";
+
+                    LogMessage($"{indent}{marker} [{index}] {controlType}");
+                    LogMessage($"{indent}      Name: {name}");
+                    LogMessage($"{indent}      AutomationId: {automationId}");
+
+                    if (!className.StartsWith("WindowsForms10."))
+                    {
+                        LogMessage($"{indent}      ClassName: {className}");
+                    }
+
+                    // Alt elementleri sayısını göster
+                    try
+                    {
+                        var grandChildren = child.FindAll(TreeScope.Children, Condition.TrueCondition);
+                        if (grandChildren.Count > 0)
+                        {
+                            LogMessage($"{indent}      └─ {grandChildren.Count} child element içeriyor");
+                        }
+                    }
+                    catch { }
+
+                    LogMessage("");
+                    index++;
+
+                    // İlk 50 elementi göster (performans için)
+                    if (index >= 50)
+                    {
+                        LogMessage($"{indent}   ... ve {children.Count - 50} element daha (gösterilmiyor)");
+                        break;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogMessage($"{indent}   ⚠ Element #{index} okunamadı: {ex.Message}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            LogMessage($"   ❌ Analiz hatası: {ex.Message}");
+        }
+    }
+
     private async void btnPickElement_Click(object? sender, EventArgs e)
     {
         // Eğer test devam ediyorsa iptal et
@@ -693,6 +827,12 @@ public partial class TaskChainRecorderForm : Form
         AppendIfNotEmpty("WindowProcessId", elementInfo.WindowProcessId?.ToString());
         AppendIfNotEmpty("WindowClassName", elementInfo.WindowClassName);
 
+        txtElementProperties.AppendText($"{Environment.NewLine}=== CONTAINER BİLGİLERİ (Overlay/Pane Tespiti) ==={Environment.NewLine}");
+        AppendIfNotEmpty("ContainerControlType", elementInfo.ContainerControlType);
+        AppendIfNotEmpty("ContainerName", elementInfo.ContainerName);
+        AppendIfNotEmpty("ContainerAutomationId", elementInfo.ContainerAutomationId);
+        AppendIfNotEmpty("ContainerClassName", elementInfo.ContainerClassName);
+
         txtElementProperties.AppendText($"{Environment.NewLine}=== UI AUTOMATION ÖZELLİKLERİ ==={Environment.NewLine}");
         AppendIfNotEmpty("AutomationId", elementInfo.AutomationId);
         AppendIfNotEmpty("RuntimeId", elementInfo.RuntimeId);
@@ -724,7 +864,11 @@ public partial class TaskChainRecorderForm : Form
         AppendIfNotEmpty("ParentName", elementInfo.ParentName);
         AppendIfNotEmpty("ParentAutomationId", elementInfo.ParentAutomationId);
         AppendIfNotEmpty("ParentClassName", elementInfo.ParentClassName);
+        AppendIfNotEmpty("GrandParentName", elementInfo.GrandParentName);
+        AppendIfNotEmpty("GrandParentAutomationId", elementInfo.GrandParentAutomationId);
         AppendIfNotEmpty("IndexInParent", elementInfo.IndexInParent?.ToString());
+        AppendIfNotEmpty("SiblingCount", elementInfo.SiblingCount?.ToString());
+        AppendIfNotEmpty("SiblingContext", elementInfo.SiblingContext);
 
         txtElementProperties.AppendText($"{Environment.NewLine}=== ETİKET VE İLİŞKİLER ==={Environment.NewLine}");
         AppendIfNotEmpty("LabeledByElement", elementInfo.LabeledByElement);
@@ -735,12 +879,25 @@ public partial class TaskChainRecorderForm : Form
         AppendIfNotEmpty("TagName", elementInfo.TagName);
         AppendIfNotEmpty("HtmlName", elementInfo.HtmlName);
         AppendIfNotEmpty("Type", elementInfo.Type);
+        AppendIfNotEmpty("Title", elementInfo.Title);
+        AppendIfNotEmpty("Role", elementInfo.Role);
         AppendIfNotEmpty("InnerText", elementInfo.InnerText);
+        AppendIfNotEmpty("TextContent", elementInfo.TextContent);
         AppendIfNotEmpty("Value", elementInfo.Value);
         AppendIfNotEmpty("Href", elementInfo.Href);
         AppendIfNotEmpty("Src", elementInfo.Src);
         AppendIfNotEmpty("Alt", elementInfo.Alt);
         AppendIfNotEmpty("Placeholder", elementInfo.Placeholder);
+
+        // OuterHtml sadece kısa ise göster (çok uzun olabilir)
+        if (!string.IsNullOrEmpty(elementInfo.OuterHtml) && elementInfo.OuterHtml.Length < 500)
+        {
+            AppendIfNotEmpty("OuterHtml", elementInfo.OuterHtml);
+        }
+        else if (!string.IsNullOrEmpty(elementInfo.OuterHtml))
+        {
+            AppendIfNotEmpty("OuterHtml", elementInfo.OuterHtml.Substring(0, 497) + "...");
+        }
 
         txtElementProperties.AppendText($"{Environment.NewLine}=== ARIA ÖZELLİKLERİ ==={Environment.NewLine}");
         AppendIfNotEmpty("AriaLabel", elementInfo.AriaLabel);
@@ -781,6 +938,20 @@ public partial class TaskChainRecorderForm : Form
         LogMessage($"✓ Element yakalandı: {elementInfo.Name} ({elementInfo.ControlType})");
         LogMessage($"  FrameworkId: {elementInfo.FrameworkId}");
         LogMessage($"  TreePath: {elementInfo.TreePath}");
+
+        // Container bilgisini log'a kaydet
+        if (!string.IsNullOrEmpty(elementInfo.ContainerControlType))
+        {
+            LogMessage($"  Container: {elementInfo.ContainerControlType}");
+            if (!string.IsNullOrEmpty(elementInfo.ContainerName))
+            {
+                LogMessage($"    Container Name: {elementInfo.ContainerName}");
+            }
+        }
+        else
+        {
+            LogMessage("  ⚠ Container bilgisi bulunamadı");
+        }
 
         // Stratejileri otomatik oluştur
         GenerateStrategies(elementInfo);
@@ -862,6 +1033,14 @@ public partial class TaskChainRecorderForm : Form
         btnTestAllStrategies.Text = "⏹ Testi Durdur";
         LogMessage("\n=== STRATEJİ TESTLERİ BAŞLATILIYOR ===");
 
+        // Debug log oturumunu başlat
+        DebugLogger.StartNewSession();
+        var debugLogPath = DebugLogger.GetLogFilePath();
+        LogMessage($"📝 Debug log dosyası: {debugLogPath}");
+        DebugLogger.LogSeparator('=', 80);
+        DebugLogger.Log("STRATEJİ TESTLERİ BAŞLATILIYOR");
+        DebugLogger.LogSeparator('=', 80);
+
         lstStrategies.Items.Clear();
         lblTestResult.Text = "⏳ Test ediliyor...";
         lblTestResult.ForeColor = Color.Blue;
@@ -925,6 +1104,13 @@ public partial class TaskChainRecorderForm : Form
                 // Sonucu label'da göster
                 lblTestResult.Text = $"✅ Test Tamamlandı - Başarılı: {successCount}, Başarısız: {failCount}";
                 lblTestResult.ForeColor = successCount > 0 ? Color.Green : Color.Orange;
+
+                // Log dosyası özeti
+                DebugLogger.LogSeparator('=', 80);
+                DebugLogger.Log($"TEST SONUÇLARI: {successCount} Başarılı, {failCount} Başarısız");
+                DebugLogger.LogSeparator('=', 80);
+                var logPath = DebugLogger.GetLogFilePath();
+                LogMessage($"📁 Detaylı log kaydedildi: {logPath}");
             }
         }
         catch (OperationCanceledException)
@@ -932,6 +1118,8 @@ public partial class TaskChainRecorderForm : Form
             LogMessage("\n⏹ Test kullanıcı tarafından durduruldu.");
             lblTestResult.Text = "⏹ Test durduruldu";
             lblTestResult.ForeColor = Color.Gray;
+
+            DebugLogger.Log("TEST DURDURULDU");
         }
         finally
         {
