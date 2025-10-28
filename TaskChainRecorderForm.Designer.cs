@@ -60,6 +60,16 @@ partial class TaskChainRecorderForm
         lblSelectedStrategy = new Label();
         lblTestResult = new Label();
 
+        // GroupBox for Smart Element Recorder
+        grpSmartTest = new GroupBox();
+        lblSmartInfo = new Label();
+        btnSmartPick = new Button();
+        btnTestSmartStrategies = new Button();
+        lstSmartStrategies = new ListBox();
+        lblSmartSelectedStrategy = new Label();
+        lblSmartTestResult = new Label();
+        txtSmartElementProperties = new TextBox();
+
         // Buttons
         btnSaveStep = new Button();
         btnTestStep = new Button();
@@ -399,10 +409,106 @@ partial class TaskChainRecorderForm
         lblTestResult.ForeColor = Color.Black;
 
         //
+        // grpSmartTest - Akıllı Element Kaydedici
+        //
+        grpSmartTest.Font = new Font("Segoe UI", 9.5F);
+        grpSmartTest.Location = new Point(10, 256);
+        grpSmartTest.Name = "grpSmartTest";
+        grpSmartTest.Size = new Size(860, 150);
+        grpSmartTest.Text = "🧠 Akıllı Element Kaydedici (Tablo Satırları İçin)";
+        grpSmartTest.Visible = true;
+        grpSmartTest.Controls.Add(lblSmartInfo);
+        grpSmartTest.Controls.Add(btnSmartPick);
+        grpSmartTest.Controls.Add(txtSmartElementProperties);
+        grpSmartTest.Controls.Add(btnTestSmartStrategies);
+        grpSmartTest.Controls.Add(lstSmartStrategies);
+        grpSmartTest.Controls.Add(lblSmartSelectedStrategy);
+        grpSmartTest.Controls.Add(lblSmartTestResult);
+
+        //
+        // lblSmartInfo
+        //
+        lblSmartInfo.AutoSize = true;
+        lblSmartInfo.Font = new Font("Segoe UI", 9F);
+        lblSmartInfo.Location = new Point(10, 22);
+        lblSmartInfo.Name = "lblSmartInfo";
+        lblSmartInfo.Size = new Size(480, 15);
+        lblSmartInfo.Text = "💡 Tablo satırlarını kaydetmek için bu yöntemi kullanın (Koordinat kullanmaz, yanlış elemente tıklama riskini azaltır)";
+
+        //
+        // btnSmartPick
+        //
+        btnSmartPick.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
+        btnSmartPick.Location = new Point(10, 45);
+        btnSmartPick.Name = "btnSmartPick";
+        btnSmartPick.Size = new Size(160, 40);
+        btnSmartPick.Text = "🧠 Akıllı Element Seç";
+        btnSmartPick.UseVisualStyleBackColor = true;
+        btnSmartPick.Click += btnSmartPick_Click;
+
+        //
+        // txtSmartElementProperties
+        //
+        txtSmartElementProperties.Font = new Font("Consolas", 8F);
+        txtSmartElementProperties.Location = new Point(10, 90);
+        txtSmartElementProperties.Multiline = true;
+        txtSmartElementProperties.Name = "txtSmartElementProperties";
+        txtSmartElementProperties.ReadOnly = true;
+        txtSmartElementProperties.ScrollBars = ScrollBars.Vertical;
+        txtSmartElementProperties.Size = new Size(330, 50);
+        txtSmartElementProperties.Text = "Element bilgileri burada görünecek...";
+
+        //
+        // btnTestSmartStrategies
+        //
+        btnTestSmartStrategies.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
+        btnTestSmartStrategies.Location = new Point(180, 45);
+        btnTestSmartStrategies.Name = "btnTestSmartStrategies";
+        btnTestSmartStrategies.Size = new Size(160, 40);
+        btnTestSmartStrategies.Text = "🧪 Akıllı Stratejileri Test Et";
+        btnTestSmartStrategies.UseVisualStyleBackColor = true;
+        btnTestSmartStrategies.Enabled = false;
+        btnTestSmartStrategies.Click += btnTestSmartStrategies_Click;
+
+        //
+        // lstSmartStrategies
+        //
+        lstSmartStrategies.Font = new Font("Consolas", 8F);
+        lstSmartStrategies.FormattingEnabled = true;
+        lstSmartStrategies.ItemHeight = 13;
+        lstSmartStrategies.Location = new Point(350, 45);
+        lstSmartStrategies.Name = "lstSmartStrategies";
+        lstSmartStrategies.Size = new Size(320, 65);
+        lstSmartStrategies.SelectionMode = SelectionMode.One;
+        lstSmartStrategies.SelectedIndexChanged += lstSmartStrategies_SelectedIndexChanged;
+
+        //
+        // lblSmartSelectedStrategy
+        //
+        lblSmartSelectedStrategy.AutoSize = true;
+        lblSmartSelectedStrategy.Font = new Font("Segoe UI", 8F, FontStyle.Bold);
+        lblSmartSelectedStrategy.Location = new Point(680, 45);
+        lblSmartSelectedStrategy.Name = "lblSmartSelectedStrategy";
+        lblSmartSelectedStrategy.Size = new Size(160, 13);
+        lblSmartSelectedStrategy.Text = "Seçili: -";
+        lblSmartSelectedStrategy.ForeColor = Color.Blue;
+
+        //
+        // lblSmartTestResult
+        //
+        lblSmartTestResult.Font = new Font("Segoe UI", 8F, FontStyle.Bold);
+        lblSmartTestResult.Location = new Point(680, 65);
+        lblSmartTestResult.Name = "lblSmartTestResult";
+        lblSmartTestResult.Size = new Size(170, 45);
+        lblSmartTestResult.Text = "";
+        lblSmartTestResult.TextAlign = ContentAlignment.TopLeft;
+        lblSmartTestResult.ForeColor = Color.Black;
+
+        //
         // txtLog
         //
         txtLog.Font = new Font("Consolas", 8F);
-        txtLog.Location = new Point(10, 368);
+        txtLog.Location = new Point(10, 420);
         txtLog.Multiline = true;
         txtLog.Name = "txtLog";
         txtLog.ReadOnly = true;
@@ -414,7 +520,7 @@ partial class TaskChainRecorderForm
         // btnSaveStep
         //
         btnSaveStep.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
-        btnSaveStep.Location = new Point(10, 468);
+        btnSaveStep.Location = new Point(10, 525);
         btnSaveStep.Name = "btnSaveStep";
         btnSaveStep.Size = new Size(130, 35);
         btnSaveStep.Text = "💾 Adımı Kaydet";
@@ -425,7 +531,7 @@ partial class TaskChainRecorderForm
         // btnTestStep
         //
         btnTestStep.Font = new Font("Segoe UI", 9F);
-        btnTestStep.Location = new Point(150, 468);
+        btnTestStep.Location = new Point(150, 525);
         btnTestStep.Name = "btnTestStep";
         btnTestStep.Size = new Size(120, 35);
         btnTestStep.Text = "🧪 Test Adım";
@@ -436,7 +542,7 @@ partial class TaskChainRecorderForm
         // btnNextStep
         //
         btnNextStep.Font = new Font("Segoe UI", 9F);
-        btnNextStep.Location = new Point(280, 468);
+        btnNextStep.Location = new Point(280, 525);
         btnNextStep.Name = "btnNextStep";
         btnNextStep.Size = new Size(130, 35);
         btnNextStep.Text = "➡️ Sonraki Adım";
@@ -447,7 +553,7 @@ partial class TaskChainRecorderForm
         // btnSaveChain
         //
         btnSaveChain.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
-        btnSaveChain.Location = new Point(420, 468);
+        btnSaveChain.Location = new Point(420, 525);
         btnSaveChain.Name = "btnSaveChain";
         btnSaveChain.Size = new Size(140, 35);
         btnSaveChain.Text = "💾 Zinciri Kaydet";
@@ -458,7 +564,7 @@ partial class TaskChainRecorderForm
         // btnClose
         //
         btnClose.Font = new Font("Segoe UI", 9F);
-        btnClose.Location = new Point(810, 468);
+        btnClose.Location = new Point(810, 525);
         btnClose.Name = "btnClose";
         btnClose.Size = new Size(60, 35);
         btnClose.Text = "Kapat";
@@ -470,7 +576,7 @@ partial class TaskChainRecorderForm
         //
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
-        ClientSize = new Size(880, 520);
+        ClientSize = new Size(880, 600);
         Controls.Add(btnTopmost);
         Controls.Add(lblTitle);
         Controls.Add(lblCurrentStep);
@@ -481,6 +587,7 @@ partial class TaskChainRecorderForm
         Controls.Add(grpTargetSelection);
         Controls.Add(grpUIElementAction);
         Controls.Add(grpStrategyTest);
+        Controls.Add(grpSmartTest);
         Controls.Add(txtLog);
         Controls.Add(btnSaveStep);
         Controls.Add(btnTestStep);
@@ -489,7 +596,7 @@ partial class TaskChainRecorderForm
         Controls.Add(btnClose);
         FormBorderStyle = FormBorderStyle.Sizable;
         MaximizeBox = true;
-        MinimumSize = new Size(880, 520);
+        MinimumSize = new Size(880, 600);
         Name = "TaskChainRecorderForm";
         StartPosition = FormStartPosition.CenterScreen;
         Text = "Görev Zinciri Kaydedici - Element Strateji Test";
@@ -499,6 +606,8 @@ partial class TaskChainRecorderForm
         grpUIElementAction.PerformLayout();
         grpStrategyTest.ResumeLayout(false);
         grpStrategyTest.PerformLayout();
+        grpSmartTest.ResumeLayout(false);
+        grpSmartTest.PerformLayout();
         ResumeLayout(false);
         PerformLayout();
     }
@@ -534,6 +643,17 @@ partial class TaskChainRecorderForm
     private ListBox lstStrategies;
     private Label lblSelectedStrategy;
     private Label lblTestResult;
+
+    // Smart Element Recorder
+    private GroupBox grpSmartTest;
+    private Label lblSmartInfo;
+    private Button btnSmartPick;
+    private Button btnTestSmartStrategies;
+    private ListBox lstSmartStrategies;
+    private Label lblSmartSelectedStrategy;
+    private Label lblSmartTestResult;
+    private TextBox txtSmartElementProperties;
+
     private Button btnSaveStep;
     private Button btnTestStep;
     private Button btnNextStep;

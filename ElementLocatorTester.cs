@@ -963,14 +963,16 @@ public class ElementLocatorTester
     private static AutomationElement? FindByTreePath(string treePath, AutomationElement searchRoot)
     {
         // TreePath formatı: "0/2/5/1" (index bazlı)
+        // Yeni format: "0/2/?[Pane]/1" (index bulunamazsa ControlType ile fallback)
         // TreePath RootElement'ten başlar, searchRoot parametresi ignore edilir
         try
         {
-            var indices = treePath.Split('/', StringSplitOptions.RemoveEmptyEntries)
-                .Select(int.Parse)
-                .ToArray();
+            if (string.IsNullOrWhiteSpace(treePath))
+                return null;
 
-            if (indices.Length == 0)
+            var pathParts = treePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+
+            if (pathParts.Length == 0)
             {
                 return null;
             }
@@ -978,18 +980,71 @@ public class ElementLocatorTester
             // RootElement'ten başla (TreePath her zaman RootElement'ten oluşturulur)
             var current = AutomationElement.RootElement;
 
-            // Her index ile child navigate et
-            foreach (var index in indices)
+            // Her path part ile child navigate et
+            for (int i = 0; i < pathParts.Length; i++)
             {
-                var children = current.FindAll(TreeScope.Children, Condition.TrueCondition);
+                var part = pathParts[i];
 
-                if (index >= children.Count)
+                // "?" ile başlıyorsa - ControlType fallback
+                if (part.StartsWith("?"))
                 {
-                    // Index out of range - element bulunamadı
-                    return null;
-                }
+                    // Format: "?[ControlType]"
+                    var controlTypeMatch = System.Text.RegularExpressions.Regex.Match(part, @"\?\[([^\]]+)\]");
+                    if (controlTypeMatch.Success)
+                    {
+                        var controlType = controlTypeMatch.Groups[1].Value;
 
-                current = children[index];
+                        // Bu seviyeyi ControlType ile bul (ilk eşleşeni al)
+                        var children = current.FindAll(TreeScope.Children, Condition.TrueCondition);
+                        bool found = false;
+
+                        foreach (AutomationElement child in children)
+                        {
+                            try
+                            {
+                                var childControlType = child.Current.ControlType.ProgrammaticName
+                                    .Replace("ControlType.", "");
+
+                                if (string.Equals(childControlType, controlType, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    current = child;
+                                    found = true;
+                                    break;
+                                }
+                            }
+                            catch { }
+                        }
+
+                        if (!found)
+                        {
+                            // ControlType eşleşmedi - navigation başarısız
+                            return null;
+                        }
+                    }
+                    else
+                    {
+                        // "?" tek başına - navigation yapılamaz
+                        return null;
+                    }
+                }
+                else
+                {
+                    // Sayısal index
+                    if (!int.TryParse(part, out int index))
+                    {
+                        return null;
+                    }
+
+                    var children = current.FindAll(TreeScope.Children, Condition.TrueCondition);
+
+                    if (index >= children.Count || index < 0)
+                    {
+                        // Index out of range - element bulunamadı
+                        return null;
+                    }
+
+                    current = children[index];
+                }
             }
 
             return current;

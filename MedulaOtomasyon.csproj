@@ -7,11 +7,15 @@
     <UseWindowsForms>true</UseWindowsForms>
     <UseWPF>true</UseWPF>
     <ImplicitUsings>enable</ImplicitUsings>
+    <EnableComHosting>true</EnableComHosting>
+    <EnableUnsafeBinaryFormatterSerialization>true</EnableUnsafeBinaryFormatterSerialization>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Playwright" Version="1.55.0" />
     <PackageReference Include="System.Windows.Extensions" Version="8.0.0" />
+    <PackageReference Include="Microsoft.CSharp" Version="4.7.0" />
   </ItemGroup>
 
   <ItemGroup>
@@ -22,5 +26,6 @@
       <HintPath>C:\Windows\Microsoft.NET\assembly\GAC_MSIL\UIAutomationTypes\v4.0_4.0.0.0__31bf3856ad364e35\UIAutomationTypes.dll</HintPath>
     </Reference>
   </ItemGroup>
+
 
 </Project>

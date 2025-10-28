@@ -1,16 +1,16 @@
 {
   "permissions": {
     "allow": [
-      "Bash(dotnet --version:*)",
-      "Bash(dotnet new:*)",
+      "Bash(Stop-Process -Force)",
       "Bash(dotnet build:*)",
-      "Read(//c/Windows/Microsoft.NET/assembly/GAC_MSIL/WindowsBase/v4.0_4.0.0.0__31bf3856ad364e35/**)",
-      "Bash(dotnet run)",
+      "Bash(Stop-Process -Name \"MedulaOtomasyon\" -Force -ErrorAction SilentlyContinue)",
+      "Bash(Start-Sleep -Seconds 2)",
       "Bash(taskkill:*)",
+      "Bash(powershell -Command \"(Get-Content ''C:\\Users\\ikizler1\\AndroidStudioProjects\\IlacTakip\\TaskChainExecutor.cs'' | Measure-Object -Line).Lines\")",
+      "Bash(Select-String -Pattern \"error|warning\" -Context 0,2)",
+      "Bash(powershell:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)",
-      "Bash(git push:*)",
-      "Bash(dotnet add package:*)"
+      "Bash(git commit:*)"
     ],
     "deny": [],
     "ask": []

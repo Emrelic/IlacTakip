@@ -13,6 +13,13 @@ public partial class TaskChainRecorderForm : Form
     private ElementLocatorStrategy? _selectedStrategy = null;
     private CancellationTokenSource? _testCancellationTokenSource = null;
 
+    // Smart Element Recorder için field'lar
+    private SmartElementRecorder? _smartRecorder = null;
+    private bool _isSmartRecording = false;
+    private RecordedElement? _lastRecordedElement = null;
+    private List<ElementLocatorStrategy> _smartStrategies = new();
+    private ElementLocatorStrategy? _selectedSmartStrategy = null;
+
     public TaskChainRecorderForm()
     {
         InitializeComponent();
@@ -213,39 +220,60 @@ public partial class TaskChainRecorderForm : Form
         }
         else if (_currentStep.StepType == StepType.UIElementAction)
         {
-            if (_currentStep.UIElement == null)
+            // Akıllı element seç kullanıldıysa
+            if (_selectedSmartStrategy != null && _lastRecordedElement != null)
             {
-                ShowMessage("Lütfen önce bir UI element seçin!", "Uyarı", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
+                LogMessage("🧠 Akıllı element seçimi kullanılıyor...");
+
+                // RecordedElement'i UIElementInfo'ya dönüştür
+                _currentStep.UIElement = SmartElementRecorder.ConvertToUIElementInfo(_lastRecordedElement);
+                _currentStep.SelectedStrategy = _selectedSmartStrategy;
+
+                LogMessage($"✅ Element dönüştürüldü: {_currentStep.UIElement.Name ?? _currentStep.UIElement.ClassName}");
+                LogMessage($"✅ Strateji seçildi: {_selectedSmartStrategy.Name}");
             }
-
-            // Strateji seçilmeli
-            if (_selectedStrategy == null)
+            // Normal element seç kullanıldıysa
+            else
             {
-                ShowMessage("Lütfen bir element bulma stratejisi seçin!\n\n" +
-                              "1. Element Seç butonuna tıklayın\n" +
-                              "2. Tüm Stratejileri Test Et'e tıklayın\n" +
-                              "3. Listeden bir strateji seçin",
-                    "Uyarı", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-
-            // Başarısız strateji uyarısı
-            if (!_selectedStrategy.IsSuccessful)
-            {
-                var result = ShowMessage(
-                    $"Seçtiğiniz strateji test sırasında BAŞARISIZ oldu!\n\n" +
-                    $"Strateji: {_selectedStrategy.Name}\n" +
-                    $"Hata: {_selectedStrategy.ErrorMessage}\n\n" +
-                    $"Yine de kaydetmek istiyor musunuz?",
-                    "Başarısız Strateji Uyarısı",
-                    MessageBoxButtons.YesNo,
-                    MessageBoxIcon.Warning);
-
-                if (result == DialogResult.No)
+                if (_currentStep.UIElement == null)
                 {
+                    ShowMessage("Lütfen önce bir UI element seçin!\n\n" +
+                                  "Yöntem 1: 'Element Seç' butonunu kullanın\n" +
+                                  "Yöntem 2: '🧠 Akıllı Element Seç' butonunu kullanın",
+                        "Uyarı", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
                 }
+
+                // Strateji seçilmeli
+                if (_selectedStrategy == null)
+                {
+                    ShowMessage("Lütfen bir element bulma stratejisi seçin!\n\n" +
+                                  "1. Element Seç butonuna tıklayın\n" +
+                                  "2. Tüm Stratejileri Test Et'e tıklayın\n" +
+                                  "3. Listeden bir strateji seçin",
+                        "Uyarı", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                // Başarısız strateji uyarısı
+                if (!_selectedStrategy.IsSuccessful)
+                {
+                    var result = ShowMessage(
+                        $"Seçtiğiniz strateji test sırasında BAŞARISIZ oldu!\n\n" +
+                        $"Strateji: {_selectedStrategy.Name}\n" +
+                        $"Hata: {_selectedStrategy.ErrorMessage}\n\n" +
+                        $"Yine de kaydetmek istiyor musunuz?",
+                        "Başarısız Strateji Uyarısı",
+                        MessageBoxButtons.YesNo,
+                        MessageBoxIcon.Warning);
+
+                    if (result == DialogResult.No)
+                    {
+                        return;
+                    }
+                }
+
+                _currentStep.SelectedStrategy = _selectedStrategy;
             }
 
             // Action tipini kaydet
@@ -270,10 +298,8 @@ public partial class TaskChainRecorderForm : Form
                 _currentStep.TextToType = txtKeysToPress.Text;
             }
 
-            // SEÇİLEN STRATEJİYİ KAYDET
-            _currentStep.SelectedStrategy = _selectedStrategy;
-
-            _currentStep.Description = $"Adım {_currentStepNumber}: {_currentStep.Action} - {_currentStep.UIElement.Name} [{_selectedStrategy.Name}]";
+            var strategyName = _currentStep.SelectedStrategy?.Name ?? "NoStrategy";
+            _currentStep.Description = $"Adım {_currentStepNumber}: {_currentStep.Action} - {_currentStep.UIElement.Name ?? _currentStep.UIElement.ClassName} [{strategyName}]";
         }
 
         _currentChain.Steps.Add(_currentStep);
@@ -1176,4 +1202,423 @@ public partial class TaskChainRecorderForm : Form
     {
         return MessageBox.Show(this, text, caption, buttons, icon);
     }
+
+    #region Smart Element Recorder Methods
+
+    /// <summary>
+    /// Akıllı Element Seç butonuna tıklanınca
+    /// </summary>
+    private void btnSmartPick_Click(object? sender, EventArgs e)
+    {
+        // Recording aktif mi kontrol et
+        if (_isSmartRecording)
+        {
+            // Recording'i durdur
+            StopSmartRecording();
+            return;
+        }
+
+        LogMessage("\n=== 🧠 AKILLI ELEMENT KAYDEDİCİ ===");
+        LogMessage("⚠️ Bu özellik TABLO SATIRLARI için optimize edilmiştir.");
+        LogMessage("📹 Recording başlatılıyor...");
+        LogMessage("👉 Medula sayfasındaki tablo satırına tıklayın!");
+
+        // Smart Recording'i başlat
+        StartSmartRecording();
+    }
+
+    /// <summary>
+    /// Smart Recording'i başlatır
+    /// </summary>
+    private void StartSmartRecording()
+    {
+        try
+        {
+            LogMessage($"[DEBUG] StartSmartRecording çağrıldı");
+
+            // Önceki kayıtları temizle
+            _lastRecordedElement = null;
+            _smartStrategies.Clear();
+            lstSmartStrategies.Items.Clear();
+            txtSmartElementProperties.Text = "";
+            LogMessage($"[DEBUG] Önceki kayıtlar temizlendi");
+
+            // SmartElementRecorder oluştur
+            if (_smartRecorder == null)
+            {
+                _smartRecorder = new SmartElementRecorder();
+                _smartRecorder.ElementRecorded += OnSmartElementRecorded;
+                _smartRecorder.RecordingStatusChanged += OnSmartRecordingStatusChanged;
+                LogMessage($"[DEBUG] SmartElementRecorder oluşturuldu ve event handler'lar bağlandı");
+            }
+
+            // Recording'i başlat
+            _smartRecorder.StartRecording();
+            _isSmartRecording = true;
+            LogMessage($"[DEBUG] _isSmartRecording = true");
+
+            // Buton görünümünü değiştir
+            btnSmartPick.Text = "⏹️ Kaydı Durdur";
+            btnSmartPick.BackColor = Color.Red;
+            btnSmartPick.ForeColor = Color.White;
+
+            LogMessage("✅ Smart Recording başlatıldı!");
+            LogMessage("👉 Şimdi istediğiniz tablo satırına tıklayın...");
+        }
+        catch (Exception ex)
+        {
+            LogMessage($"HATA: Smart Recording başlatılamadı: {ex.Message}");
+            LogMessage($"HATA detay: {ex.StackTrace}");
+            ShowMessage($"Smart Recording başlatılamadı:\n{ex.Message}", "Hata",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    /// <summary>
+    /// Smart Recording'i durdurur
+    /// </summary>
+    private void StopSmartRecording()
+    {
+        try
+        {
+            _smartRecorder?.StopRecording();
+            _isSmartRecording = false;
+
+            // Buton görünümünü eski haline getir
+            btnSmartPick.Text = "🧠 Akıllı Element Seç";
+            btnSmartPick.BackColor = SystemColors.Control;
+            btnSmartPick.ForeColor = SystemColors.ControlText;
+
+            LogMessage("⏹️ Smart Recording durduruldu.");
+        }
+        catch (Exception ex)
+        {
+            LogMessage($"HATA: Recording durdurulamadı: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Smart Recording status değişikliklerini loglar
+    /// </summary>
+    private void OnSmartRecordingStatusChanged(object? sender, string status)
+    {
+        // Thread-safe log
+        if (InvokeRequired)
+        {
+            Invoke(() => LogMessage($"[SmartRecorder] {status}"));
+        }
+        else
+        {
+            LogMessage($"[SmartRecorder] {status}");
+        }
+    }
+
+    /// <summary>
+    /// Element kaydedildiğinde çağrılır
+    /// </summary>
+    private void OnSmartElementRecorded(object? sender, ElementRecordedEventArgs e)
+    {
+        // Thread-safe UI güncelleme
+        if (InvokeRequired)
+        {
+            Invoke(() =>
+            {
+                LogMessage($"[DEBUG] OnSmartElementRecorded event tetiklendi (Invoke ile)");
+                ProcessSmartRecordedElement(e.Element);
+            });
+        }
+        else
+        {
+            LogMessage($"[DEBUG] OnSmartElementRecorded event tetiklendi (direkt)");
+            ProcessSmartRecordedElement(e.Element);
+        }
+    }
+
+    /// <summary>
+    /// Kaydedilen elementi işler ve stratejileri oluşturur
+    /// </summary>
+    private void ProcessSmartRecordedElement(RecordedElement element)
+    {
+        try
+        {
+            LogMessage($"\n🎯 ELEMENT YAKALANDI!");
+            LogMessage($"Tip: {element.ElementType}");
+            LogMessage($"Açıklama: {element.Description}");
+
+            // Element bilgilerini sakla
+            _lastRecordedElement = element;
+            LogMessage($"[DEBUG] _lastRecordedElement atandı: {_lastRecordedElement != null}");
+
+            // Element bilgilerini göster
+            DisplaySmartElementInfo(element);
+
+            // Stratejileri oluştur
+            CreateSmartStrategies(element);
+            LogMessage($"[DEBUG] Strateji sayısı: {_smartStrategies.Count}");
+
+            // Recording'i otomatik durdur
+            StopSmartRecording();
+
+            // Test butonunu aktif et
+            btnTestSmartStrategies.Enabled = true;
+
+            LogMessage($"✅ {_smartStrategies.Count} akıllı strateji oluşturuldu!");
+            LogMessage("👉 'Akıllı Stratejileri Test Et' butonuna tıklayarak test edin.");
+        }
+        catch (Exception ex)
+        {
+            LogMessage($"HATA: Element işlenirken hata: {ex.Message}");
+            LogMessage($"HATA detay: {ex.StackTrace}");
+        }
+    }
+
+    /// <summary>
+    /// Element bilgilerini textbox'a yazar
+    /// </summary>
+    private void DisplaySmartElementInfo(RecordedElement element)
+    {
+        var sb = new System.Text.StringBuilder();
+
+        if (element.TableInfo != null)
+        {
+            sb.AppendLine($"Tablo: {element.TableInfo.TableId ?? "?"}");
+            sb.AppendLine($"Satır: {element.TableInfo.RowIndex}");
+            sb.AppendLine($"Hücreler: {element.TableInfo.CellTexts.Count}");
+
+            if (element.TableInfo.CellTexts.Any())
+            {
+                sb.Append($"İçerik: {string.Join(" | ", element.TableInfo.CellTexts.Take(2))}");
+                if (element.TableInfo.CellTexts.Count > 2)
+                    sb.Append("...");
+            }
+        }
+        else
+        {
+            sb.AppendLine($"Tip: {element.ElementType}");
+            sb.AppendLine($"Name: {element.Name ?? "?"}");
+            sb.AppendLine($"Class: {element.ClassName ?? "?"}");
+        }
+
+        txtSmartElementProperties.Text = sb.ToString();
+    }
+
+    /// <summary>
+    /// Akıllı stratejileri oluşturur (SmartElementRecorder'dan alır)
+    /// </summary>
+    private void CreateSmartStrategies(RecordedElement element)
+    {
+        _smartStrategies.Clear();
+        lstSmartStrategies.Items.Clear();
+
+        // SmartElementRecorder'daki GenerateLocatorStrategies metodunu kullan
+        var strategies = SmartElementRecorder.GenerateLocatorStrategies(element);
+
+        LogMessage($"📋 {strategies.Count} strateji oluşturuldu:");
+
+        foreach (var strategy in strategies)
+        {
+            _smartStrategies.Add(strategy);
+
+            // ListBox'a ekle
+            var displayText = $"{strategy.Name} - {strategy.Description}";
+            lstSmartStrategies.Items.Add(displayText);
+
+            LogMessage($"  ✓ {strategy.Name}: {strategy.Description}");
+        }
+
+        // İlk stratejiyi varsayılan olarak seç
+        if (lstSmartStrategies.Items.Count > 0)
+        {
+            lstSmartStrategies.SelectedIndex = 0;
+        }
+
+        // Eski manuel strateji ekleme kodları (yedek olarak saklanıyor, artık kullanılmıyor)
+        /*
+        // Strateji 1: AutomationId (varsa)
+        if (!string.IsNullOrEmpty(element.AutomationId))
+        {
+            AddSmartStrategy("AutomationId", $"ID='{element.AutomationId}'",
+                LocatorType.AutomationId, new Dictionary<string, string>
+                {
+                    { "AutomationId", element.AutomationId }
+                }, element);
+        }
+
+        // Strateji 2: Table Row Index (varsa)
+        if (element.TableInfo != null && element.TableInfo.RowIndex >= 0)
+        {
+            AddSmartStrategy("Tablo Satır Index",
+                $"Tablo[{element.TableInfo.RowIndex}]",
+                LocatorType.TableRowIndex, new Dictionary<string, string>
+                {
+                    { "TableId", element.TableInfo.TableId ?? "" },
+                    { "RowIndex", element.TableInfo.RowIndex.ToString() }
+                }, element);
+        }
+
+        // Strateji 3: Hücre Text İçeriği (varsa)
+        if (element.TableInfo?.CellTexts != null && element.TableInfo.CellTexts.Any())
+        {
+            AddSmartStrategy("Hücre İçeriği",
+                $"Text='{string.Join("|", element.TableInfo.CellTexts.Take(2))}'",
+                LocatorType.TextContent, new Dictionary<string, string>
+                {
+                    { "CellTexts", string.Join("|", element.TableInfo.CellTexts) }
+                }, element);
+        }
+
+        // Strateji 4: ClassName + Name (varsa)
+        if (!string.IsNullOrEmpty(element.ClassName) && !string.IsNullOrEmpty(element.Name))
+        {
+            AddSmartStrategy("Class+Name",
+                $"{element.ClassName}+{element.Name}",
+                LocatorType.ClassAndName, new Dictionary<string, string>
+                {
+                    { "ClassName", element.ClassName },
+                    { "Name", element.Name }
+                }, element);
+        }
+        */
+
+        lblSmartTestResult.Text = $"{_smartStrategies.Count} strateji hazır - test edin";
+        lblSmartTestResult.ForeColor = Color.Blue;
+    }
+
+    /// <summary>
+    /// Listeye strateji ekler
+    /// </summary>
+    private void AddSmartStrategy(string name, string description, LocatorType type,
+        Dictionary<string, string> properties, RecordedElement element)
+    {
+        var strategy = new ElementLocatorStrategy
+        {
+            Name = name,
+            Description = description,
+            Type = type,
+            Properties = properties,
+            RecordedElement = element
+        };
+
+        _smartStrategies.Add(strategy);
+        lstSmartStrategies.Items.Add($"[{_smartStrategies.Count}] {name}: {description}");
+    }
+
+    /// <summary>
+    /// Akıllı stratejileri test et butonuna tıklanınca
+    /// </summary>
+    private async void btnTestSmartStrategies_Click(object? sender, EventArgs e)
+    {
+        LogMessage($"[DEBUG] Test butonuna tıklandı");
+        LogMessage($"[DEBUG] _lastRecordedElement: {(_lastRecordedElement == null ? "NULL" : "VAR")}");
+        LogMessage($"[DEBUG] _smartStrategies.Count: {_smartStrategies.Count}");
+
+        if (_lastRecordedElement == null || !_smartStrategies.Any())
+        {
+            ShowMessage("Önce 'Akıllı Element Seç' butonuna tıklayıp bir element seçin!",
+                "Uyarı", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        LogMessage("\n=== 🧪 AKILLI STRATEJİLERİ TEST EDİLİYOR ===");
+
+        int successCount = 0;
+        foreach (var strategy in _smartStrategies)
+        {
+            try
+            {
+                LogMessage($"\n[Test] {strategy.Name}: {strategy.Description}");
+
+                // SmartElementRecorder'ın ExecuteLocatorStrategy metodunu kullan
+                var success = _smartRecorder?.ExecuteLocatorStrategy(strategy) ?? false;
+
+                strategy.IsSuccessful = success;
+                strategy.ErrorMessage = success ? null : "Element bulunamadı";
+
+                if (success)
+                {
+                    successCount++;
+                    LogMessage($"  ✅ BAŞARILI - Element bulundu ve tıklandı!");
+                }
+                else
+                {
+                    LogMessage($"  ❌ BAŞARISIZ - Element bulunamadı");
+                }
+
+                // Her test arasında kısa bekleme
+                await Task.Delay(500);
+            }
+            catch (Exception ex)
+            {
+                strategy.IsSuccessful = false;
+                strategy.ErrorMessage = ex.Message;
+                LogMessage($"  ❌ HATA: {ex.Message}");
+            }
+        }
+
+        // Sonuçları güncelle
+        UpdateSmartStrategiesList();
+
+        lblSmartTestResult.Text = $"Test tamamlandı: {successCount}/{_smartStrategies.Count} başarılı";
+        lblSmartTestResult.ForeColor = successCount > 0 ? Color.Green : Color.Red;
+
+        LogMessage($"\n📊 Test Sonuçları: {successCount}/{_smartStrategies.Count} başarılı");
+
+        if (successCount > 0)
+        {
+            LogMessage("✅ En az bir strateji çalışıyor! Liste'den seçip 'Adımı Kaydet' yapabilirsiniz.");
+        }
+        else
+        {
+            LogMessage("❌ Hiçbir strateji çalışmadı. Element yapısını kontrol edin.");
+        }
+    }
+
+    /// <summary>
+    /// Strateji listesini test sonuçlarına göre günceller
+    /// </summary>
+    private void UpdateSmartStrategiesList()
+    {
+        lstSmartStrategies.Items.Clear();
+
+        for (int i = 0; i < _smartStrategies.Count; i++)
+        {
+            var strategy = _smartStrategies[i];
+            var prefix = strategy.IsSuccessful ? "✅" : "❌";
+            var text = $"{prefix} [{i + 1}] {strategy.Name}: {strategy.Description}";
+            lstSmartStrategies.Items.Add(text);
+        }
+    }
+
+    /// <summary>
+    /// Smart strateji listesinden bir öğe seçildiğinde
+    /// </summary>
+    private void lstSmartStrategies_SelectedIndexChanged(object? sender, EventArgs e)
+    {
+        if (lstSmartStrategies.SelectedIndex < 0 ||
+            lstSmartStrategies.SelectedIndex >= _smartStrategies.Count)
+        {
+            _selectedSmartStrategy = null;
+            lblSmartSelectedStrategy.Text = "Seçili: -";
+            lblSmartSelectedStrategy.ForeColor = Color.Blue;
+            return;
+        }
+
+        var strategy = _smartStrategies[lstSmartStrategies.SelectedIndex];
+        _selectedSmartStrategy = strategy;
+
+        var statusText = strategy.IsSuccessful ? "✅ BAŞARILI" : "❌ BAŞARISIZ";
+        lblSmartSelectedStrategy.Text = $"Seçili: {strategy.Name} {statusText}";
+        lblSmartSelectedStrategy.ForeColor = strategy.IsSuccessful ? Color.Green : Color.Red;
+
+        LogMessage($"\n📌 Seçili Akıllı Strateji: {strategy.Name}");
+        LogMessage($"   Açıklama: {strategy.Description}");
+        LogMessage($"   Durum: {statusText}");
+
+        if (!strategy.IsSuccessful && !string.IsNullOrEmpty(strategy.ErrorMessage))
+        {
+            LogMessage($"   Hata: {strategy.ErrorMessage}");
+        }
+    }
+
+    #endregion
 }

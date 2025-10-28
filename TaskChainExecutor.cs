@@ -18,6 +18,7 @@ public class TaskChainExecutor
     private bool _isPaused;
     private int _currentStepIndex = -1;
     private readonly ExecutionHistoryDatabase _historyDb;
+    private readonly ConditionEvaluator _conditionEvaluator;
 
     // Settings
     public ExecutionSpeed Speed { get; set; } = ExecutionSpeed.Normal;
@@ -50,6 +51,7 @@ public class TaskChainExecutor
     public TaskChainExecutor()
     {
         _historyDb = new ExecutionHistoryDatabase();
+        _conditionEvaluator = new ConditionEvaluator();
     }
 
     /// <summary>
@@ -134,6 +136,7 @@ public class TaskChainExecutor
                     {
                         stepRecord.Status = StepExecutionStatus.Skipped;
                         Log($"Adım {step.StepNumber} atlandı.");
+                        StepSkipped?.Invoke(this, new StepExecutionEventArgs(stepRecord, step));
                     }
                     // Continue: Bir sonraki adıma geç
                 }
@@ -213,8 +216,8 @@ public class TaskChainExecutor
                     break;
 
                 case StepType.ConditionalBranch:
-                    // TODO: Implement conditional branching
-                    throw new NotImplementedException("Conditional branching henüz implement edilmedi.");
+                    await ExecuteConditionalBranchAsync(step, cancellationToken);
+                    break;
 
                 case StepType.LoopOrEnd:
                     // TODO: Implement loop
@@ -363,8 +366,16 @@ public class TaskChainExecutor
                 ClickElement(element);
                 break;
 
+            case ActionType.RightClick:
+                RightClickElement(element);
+                break;
+
             case ActionType.DoubleClick:
                 DoubleClickElement(element);
+                break;
+
+            case ActionType.MouseWheel:
+                MouseWheelElement(element, step.MouseWheelDelta ?? 120);
                 break;
 
             case ActionType.TypeText:
@@ -408,9 +419,29 @@ public class TaskChainExecutor
         var rect = element.Current.BoundingRectangle;
         var centerX = (int)(rect.Left + rect.Width / 2);
         var centerY = (int)(rect.Top + rect.Height / 2);
-        MedulaAutomation.MouseClick(centerX, centerY);
-        Thread.Sleep(50);
-        MedulaAutomation.MouseClick(centerX, centerY);
+        MedulaAutomation.MouseDoubleClick(centerX, centerY);
+    }
+
+    /// <summary>
+    /// Element'e sağ tık
+    /// </summary>
+    private void RightClickElement(AutomationElement element)
+    {
+        var rect = element.Current.BoundingRectangle;
+        var centerX = (int)(rect.Left + rect.Width / 2);
+        var centerY = (int)(rect.Top + rect.Height / 2);
+        MedulaAutomation.MouseRightClick(centerX, centerY);
+    }
+
+    /// <summary>
+    /// Element üzerinde mouse tekerlek
+    /// </summary>
+    private void MouseWheelElement(AutomationElement element, int delta)
+    {
+        var rect = element.Current.BoundingRectangle;
+        var centerX = (int)(rect.Left + rect.Width / 2);
+        var centerY = (int)(rect.Top + rect.Height / 2);
+        MedulaAutomation.MouseWheel(centerX, centerY, delta);
     }
 
     /// <summary>
@@ -455,9 +486,15 @@ public class TaskChainExecutor
                 var fileName = $"step_{step.StepNumber}_{DateTime.Now:yyyyMMdd_HHmmss}.png";
                 var filePath = Path.Combine(screenshotsDir, fileName);
 
+                var primaryScreen = System.Windows.Forms.Screen.PrimaryScreen;
+                if (primaryScreen == null)
+                {
+                    return "";
+                }
+
                 using var bitmap = new Bitmap(
-                    System.Windows.Forms.Screen.PrimaryScreen.Bounds.Width,
-                    System.Windows.Forms.Screen.PrimaryScreen.Bounds.Height
+                    primaryScreen.Bounds.Width,
+                    primaryScreen.Bounds.Height
                 );
                 using var graphics = Graphics.FromImage(bitmap);
                 graphics.CopyFromScreen(0, 0, 0, 0, bitmap.Size);
@@ -548,10 +585,69 @@ public class TaskChainExecutor
     }
 
     /// <summary>
+    /// Conditional Branch adımını çalıştır (Tip 3)
+    /// </summary>
+    private async Task ExecuteConditionalBranchAsync(TaskStep step, CancellationToken cancellationToken)
+    {
+        if (step.Condition == null)
+        {
+            throw new InvalidOperationException("Condition bilgisi boş!");
+        }
+
+        Log($"Koşul değerlendiriliyor: {step.Condition.PageIdentifier ?? "Sayfa kontrolü"}");
+
+        try
+        {
+            // Koşulları değerlendir
+            string result = _conditionEvaluator.EvaluateConditions(step.Condition);
+            Log($"Koşul sonucu: {result}");
+
+            // Hangi dala gideceğini bul
+            string targetBranch = _conditionEvaluator.GetTargetBranch(step.Condition, result);
+
+            if (string.IsNullOrEmpty(targetBranch))
+            {
+                Log($"⚠ Uyarı: Koşul sonucu '{result}' için hedef dal bulunamadı. Varsayılan akış devam ediyor.");
+                return;
+            }
+
+            Log($"✓ Dallanma hedefi: Adım {targetBranch}");
+
+            // Hedef dalı bir sonraki adım olarak işaretle (bu bilgi ExecuteAsync'te kullanılabilir)
+            // Şu anki basit implementasyon için, sadece log'la
+            // Gerçek implementasyonda, ExecuteAsync'in StepId bazlı navigation yapması gerekiyor
+
+            await Task.Delay(500, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException($"Koşul değerlendirme hatası: {ex.Message}", ex);
+        }
+    }
+
+    /// <summary>
     /// Log mesajı
     /// </summary>
     private void Log(string message)
     {
         LogMessage?.Invoke(this, message);
+    }
+
+    /// <summary>
+    /// StepId'ye göre adım indexini bul
+    /// </summary>
+    private int FindStepIndexByStepId(string stepId)
+    {
+        if (_currentChain == null) return -1;
+
+        for (int i = 0; i < _currentChain.Steps.Count; i++)
+        {
+            if (_currentChain.Steps[i].StepId == stepId)
+            {
+                return i;
+            }
+        }
+
+        return -1;
     }
 }

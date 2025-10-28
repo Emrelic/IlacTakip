@@ -896,6 +896,7 @@ public class MedulaAutomation
     private const uint MOUSEEVENTF_LEFTUP = 0x0004;
     private const uint MOUSEEVENTF_RIGHTDOWN = 0x0008;
     private const uint MOUSEEVENTF_RIGHTUP = 0x0010;
+    private const uint MOUSEEVENTF_WHEEL = 0x0800;
 
     public static void MouseClick(int x, int y)
     {
@@ -905,12 +906,7 @@ public class MedulaAutomation
         mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
     }
 
-    private void MouseClickInstance(int x, int y)
-    {
-        MouseClick(x, y);
-    }
-
-    private void MouseDoubleClick(int x, int y)
+    public static void MouseDoubleClick(int x, int y)
     {
         SetCursorPos(x, y);
         Thread.Sleep(50);
@@ -921,12 +917,26 @@ public class MedulaAutomation
         mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
     }
 
-    private void MouseRightClick(int x, int y)
+    public static void MouseRightClick(int x, int y)
     {
         SetCursorPos(x, y);
         Thread.Sleep(50);
         mouse_event(MOUSEEVENTF_RIGHTDOWN, 0, 0, 0, 0);
         mouse_event(MOUSEEVENTF_RIGHTUP, 0, 0, 0, 0);
+    }
+
+    public static void MouseWheel(int x, int y, int delta)
+    {
+        // delta: pozitif = yukarı kaydır, negatif = aşağı kaydır
+        // Tipik değer: 120 veya -120
+        SetCursorPos(x, y);
+        Thread.Sleep(50);
+        mouse_event(MOUSEEVENTF_WHEEL, 0, 0, (uint)delta, 0);
+    }
+
+    private void MouseClickInstance(int x, int y)
+    {
+        MouseClick(x, y);
     }
 
     #endregion

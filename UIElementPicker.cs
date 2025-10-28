@@ -345,51 +345,167 @@ public class UIElementPicker
     }
 
     /// <summary>
-    /// Tree path oluşturur (index bazlı: "0/2/5/1")
+    /// Tree path oluşturur - Geliştirilmiş versiyon
+    /// Format: "0/2/5/1" (index bazlı)
+    /// Index bulunamazsa "?" kullanır, böylece path yine de oluşur
     /// </summary>
     private static string BuildTreePath(AutomationElement element)
     {
-        var indices = new List<int>();
+        var pathParts = new List<string>();
         var current = element;
+        int depth = 0;
+        const int maxDepth = 15; // Daha derin hierarchy'ler için artırıldı
 
         try
         {
-            while (current != null && current != AutomationElement.RootElement)
+            while (current != null && current != AutomationElement.RootElement && depth < maxDepth)
             {
-                var index = GetIndexInParent(current);
-                if (index.HasValue)
+                try
                 {
-                    indices.Insert(0, index.Value);
+                    var index = GetIndexInParent(current);
+
+                    if (index.HasValue)
+                    {
+                        // Index başarıyla bulundu
+                        pathParts.Insert(0, index.Value.ToString());
+                    }
+                    else
+                    {
+                        // Index bulunamadı - ControlType bilgisi ile fallback
+                        var controlType = current.Current.ControlType.ProgrammaticName
+                            .Replace("ControlType.", "");
+                        pathParts.Insert(0, $"?[{controlType}]");
+                    }
+
+                    // Parent'a git
+                    current = TreeWalker.RawViewWalker.GetParent(current);
+                    depth++;
                 }
-
-                current = TreeWalker.RawViewWalker.GetParent(current);
-
-                if (indices.Count > 10) break; // Maksimum derinlik
+                catch
+                {
+                    // Bu seviyede hata - bir sonraki parent'a geç
+                    try
+                    {
+                        current = TreeWalker.RawViewWalker.GetParent(current);
+                        depth++;
+                    }
+                    catch
+                    {
+                        break;
+                    }
+                }
             }
         }
         catch { }
 
-        return string.Join("/", indices);
+        // Eğer hiç path oluşturulamadıysa
+        if (pathParts.Count == 0)
+        {
+            try
+            {
+                var controlType = element.Current.ControlType.ProgrammaticName
+                    .Replace("ControlType.", "");
+                return $"?[{controlType}]";
+            }
+            catch
+            {
+                return "?";
+            }
+        }
+
+        return string.Join("/", pathParts);
     }
 
     /// <summary>
-    /// Parent içindeki index'i bulur
+    /// Parent içindeki index'i bulur - Geliştirilmiş versiyon
+    /// Birden fazla yöntemle index bulmayı dener
     /// </summary>
     private static int? GetIndexInParent(AutomationElement element)
     {
         try
         {
             var parent = TreeWalker.RawViewWalker.GetParent(element);
-            if (parent == null) return null;
+            if (parent == null || parent == AutomationElement.RootElement)
+                return null;
 
-            var siblings = parent.FindAll(TreeScope.Children, Condition.TrueCondition);
-            for (int i = 0; i < siblings.Count; i++)
+            // Yöntem 1: FindAll ile tüm children'ı bul ve Automation.Compare ile karşılaştır
+            try
             {
-                if (Automation.Compare(siblings[i], element))
+                var siblings = parent.FindAll(TreeScope.Children, Condition.TrueCondition);
+                if (siblings != null && siblings.Count > 0)
                 {
-                    return i;
+                    for (int i = 0; i < siblings.Count; i++)
+                    {
+                        try
+                        {
+                            if (Automation.Compare(siblings[i], element))
+                            {
+                                return i;
+                            }
+                        }
+                        catch { }
+                    }
                 }
             }
+            catch { }
+
+            // Yöntem 2: TreeWalker ile manuel olarak iterate et
+            try
+            {
+                var walker = TreeWalker.RawViewWalker;
+                var currentChild = walker.GetFirstChild(parent);
+                int index = 0;
+
+                while (currentChild != null && index < 1000) // Max 1000 child'a kadar bak
+                {
+                    try
+                    {
+                        if (Automation.Compare(currentChild, element))
+                        {
+                            return index;
+                        }
+                    }
+                    catch { }
+
+                    try
+                    {
+                        currentChild = walker.GetNextSibling(currentChild);
+                        index++;
+                    }
+                    catch
+                    {
+                        break;
+                    }
+                }
+            }
+            catch { }
+
+            // Yöntem 3: RuntimeId karşılaştırması (son çare)
+            try
+            {
+                var targetRuntimeId = element.GetRuntimeId();
+                if (targetRuntimeId != null)
+                {
+                    var siblings = parent.FindAll(TreeScope.Children, Condition.TrueCondition);
+                    if (siblings != null)
+                    {
+                        for (int i = 0; i < siblings.Count; i++)
+                        {
+                            try
+                            {
+                                var siblingRuntimeId = siblings[i].GetRuntimeId();
+                                if (siblingRuntimeId != null &&
+                                    targetRuntimeId.SequenceEqual(siblingRuntimeId))
+                                {
+                                    return i;
+                                }
+                            }
+                            catch { }
+                        }
+                    }
+                }
+            }
+            catch { }
         }
         catch { }
 

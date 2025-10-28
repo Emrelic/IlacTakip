@@ -44,6 +44,37 @@ public enum ActionType
 }
 
 /// <summary>
+/// Koşul operatörleri (Tip 3 için)
+/// </summary>
+public enum ConditionOperator
+{
+    Equals,           // ==
+    NotEquals,        // !=
+    Contains,         // Text içinde geçiyor mu
+    NotContains,      // Text içinde geçmiyor mu
+    StartsWith,       // Text ile başlıyor mu
+    EndsWith,         // Text ile bitiyor mu
+    GreaterThan,      // > (sayısal)
+    LessThan,         // < (sayısal)
+    GreaterOrEqual,   // >=
+    LessOrEqual,      // <=
+    IsTrue,           // Boolean true mu
+    IsFalse,          // Boolean false mu
+    IsEmpty,          // Boş mu (string/text için)
+    IsNotEmpty        // Boş değil mi
+}
+
+/// <summary>
+/// Mantıksal operatörler (çoklu koşullar için)
+/// </summary>
+public enum LogicalOperator
+{
+    None,  // Tek koşul varsa
+    AND,   // Ve
+    OR     // Veya
+}
+
+/// <summary>
 /// Hedef program/pencere bilgileri
 /// </summary>
 public class TargetInfo
@@ -176,16 +207,97 @@ public class UIElementInfo
 }
 
 /// <summary>
-/// Koşullu dallanma bilgileri
+/// Tek bir UI element koşulu (Tip 3 için)
+/// </summary>
+public class UICondition
+{
+    /// <summary>
+    /// Kontrol edilecek UI elementi (tam element bilgisi)
+    /// </summary>
+    public UIElementInfo? Element { get; set; }
+
+    /// <summary>
+    /// Kontrol edilecek özellik adı (IsChecked, Text, IsEnabled, IsVisible, Value, vb)
+    /// </summary>
+    public string PropertyName { get; set; } = "";
+
+    /// <summary>
+    /// Karşılaştırma operatörü
+    /// </summary>
+    public ConditionOperator Operator { get; set; }
+
+    /// <summary>
+    /// Beklenen değer (karşılaştırılacak değer)
+    /// </summary>
+    public string ExpectedValue { get; set; } = "";
+
+    /// <summary>
+    /// Bir sonraki koşulla bağlantı (AND/OR/None)
+    /// </summary>
+    public LogicalOperator LogicalOperator { get; set; } = LogicalOperator.None;
+
+    /// <summary>
+    /// Element bulma stratejisi
+    /// </summary>
+    public ElementLocatorStrategy? LocatorStrategy { get; set; }
+}
+
+/// <summary>
+/// Dallanma hedefi (Tip 3 için)
+/// </summary>
+public class BranchTarget
+{
+    /// <summary>
+    /// Dal adı (A, B, C, vb)
+    /// </summary>
+    public string BranchName { get; set; } = "";
+
+    /// <summary>
+    /// Hedef adım ID'si (örn: "6A", "7B")
+    /// </summary>
+    public string TargetStepId { get; set; } = "";
+
+    /// <summary>
+    /// Bu dala gitmek için gereken koşul sonucu
+    /// true, false, veya switch-case için özel değer
+    /// </summary>
+    public string ConditionValue { get; set; } = "";
+
+    /// <summary>
+    /// Dal açıklaması
+    /// </summary>
+    public string? Description { get; set; }
+}
+
+/// <summary>
+/// Koşullu dallanma bilgileri (Tip 3 için - yenilendi)
 /// </summary>
 public class ConditionInfo
 {
-    public string? PropertyName { get; set; } // "IsChecked", "Text", "IsVisible", vb
-    public string? Operator { get; set; } // "Equals", "Contains", "IsTrue", "IsFalse", vb
-    public string? ExpectedValue { get; set; }
-    public string? LogicalOperator { get; set; } // "AND", "OR"
-    public int? TrueStepNumber { get; set; } // True ise gidilecek adım
-    public int? FalseStepNumber { get; set; } // False ise gidilecek adım
+    /// <summary>
+    /// Hedef sayfa URL'i veya tanımlayıcı bilgisi
+    /// </summary>
+    public string? PageIdentifier { get; set; }
+
+    /// <summary>
+    /// Kontrol edilecek koşullar listesi
+    /// </summary>
+    public List<UICondition> Conditions { get; set; } = new();
+
+    /// <summary>
+    /// Dallanma hedefleri
+    /// </summary>
+    public List<BranchTarget> Branches { get; set; } = new();
+
+    /// <summary>
+    /// Hiçbir koşul tutmazsa varsayılan hedef
+    /// </summary>
+    public string? DefaultBranchStepId { get; set; }
+
+    /// <summary>
+    /// Dallanma tipi: "Boolean" (true/false) veya "SwitchCase" (çoklu dal)
+    /// </summary>
+    public string BranchType { get; set; } = "Boolean";
 }
 
 /// <summary>
@@ -200,6 +312,9 @@ public class ElementLocatorStrategy
     public bool IsSuccessful { get; set; } // Test başarılı mı?
     public int TestDurationMs { get; set; } // Test süresi (ms)
     public string? ErrorMessage { get; set; } // Hata mesajı varsa
+
+    // Smart Element Recorder için
+    public RecordedElement? RecordedElement { get; set; } // Kaydedilmiş element bilgisi
 }
 
 /// <summary>
@@ -222,7 +337,12 @@ public enum LocatorType
     HtmlId,
     PlaywrightSelector,
     NameAndControlTypeAndIndex,     // Name + ControlType + IndexInParent (duplicate name çözümü)
-    NameAndParentAndIndex           // Name + Parent + IndexInParent (duplicate name çözümü)
+    NameAndParentAndIndex,          // Name + Parent + IndexInParent (duplicate name çözümü)
+
+    // Smart Element Recorder için yeni tipler
+    TableRowIndex,                  // Tablo ID + Satır Index
+    TextContent,                    // Hücre text içeriği
+    ClassAndName                    // ClassName + Name kombinasyonu
 }
 
 /// <summary>
@@ -230,7 +350,16 @@ public enum LocatorType
 /// </summary>
 public class TaskStep
 {
+    /// <summary>
+    /// Adım numarası (eski sistem için uyumluluk)
+    /// </summary>
     public int StepNumber { get; set; }
+
+    /// <summary>
+    /// Adım ID'si - dallanmalar için: "1", "2", "5", "6A", "6B", "7A", "7B", "8"
+    /// </summary>
+    public string StepId { get; set; } = "";
+
     public StepType StepType { get; set; }
     public string? Description { get; set; }
 
@@ -242,6 +371,7 @@ public class TaskStep
     public ActionType Action { get; set; }
     public string? KeysToPress { get; set; } // Klavye tuşları
     public string? TextToType { get; set; } // Yazılacak metin
+    public int? MouseWheelDelta { get; set; } // Mouse tekerlek delta (120 = yukarı, -120 = aşağı)
     public int? WaitMilliseconds { get; set; } // Bekleme süresi
 
     // Element bulma stratejisi (kullanıcının seçtiği)
@@ -253,10 +383,12 @@ public class TaskStep
     // Tip 4 için
     public bool IsLoopEnd { get; set; }
     public int? LoopBackToStep { get; set; }
+    public string? LoopBackToStepId { get; set; } // Dallanma için
     public bool IsChainEnd { get; set; }
 
-    // Genel
-    public int? NextStepNumber { get; set; } // Varsayılan sonraki adım
+    // Genel - Sonraki adım (dallanma yoksa)
+    public int? NextStepNumber { get; set; } // Eski sistem için
+    public string? NextStepId { get; set; } // Yeni sistem için - dallanma desteği
 }
 
 /// <summary>
