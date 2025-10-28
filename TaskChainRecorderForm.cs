@@ -1,4 +1,8 @@
 using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Automation;
 
 namespace MedulaOtomasyon;
@@ -19,6 +23,8 @@ public partial class TaskChainRecorderForm : Form
     private RecordedElement? _lastRecordedElement = null;
     private List<ElementLocatorStrategy> _smartStrategies = new();
     private ElementLocatorStrategy? _selectedSmartStrategy = null;
+    private readonly string _medulaHtmlPath = Path.Combine(AppContext.BaseDirectory, "medula sayfası kaynak kodları.txt");
+    private bool _smartStepAutoSaved = false;
 
     public TaskChainRecorderForm()
     {
@@ -88,10 +94,10 @@ public partial class TaskChainRecorderForm : Form
                 LogMessage("Tip 2 seçildi: UI Element Tıklama/Tuşlama");
                 break;
 
-            case 2: // Tip 3: Sayfa Durum Kontrolü
-                ShowMessage("Tip 3: Sayfa Durum Kontrolü henüz uygulanmadı.\nYakında eklenecek.",
-                    "Bilgi", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                cmbStepType.SelectedIndex = 0;
+            case 2: // Tip 3: Sayfa Durum Kontrolü (Koşullu Dallanma)
+                _currentStep.StepType = StepType.ConditionalBranch;
+                LogMessage("Tip 3 seçildi: Sayfa Durum Kontrolü (Koşullu Dallanma)");
+                OpenConditionalBranchRecorder();
                 break;
 
             case 3: // Tip 4: Döngü veya Bitiş Koşulu
@@ -420,23 +426,30 @@ public partial class TaskChainRecorderForm : Form
 
     private void TestUIElementAction()
     {
+        var strategy = _selectedStrategy ?? _selectedSmartStrategy;
+
+        if (strategy == null)
+        {
+            ShowMessage("Lütfen önce bir strateji seçin! (Akıllı Stratejiler listesi veya klasik liste)", "Uyarı",
+                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        if (_currentStep.UIElement == null && strategy.RecordedElement != null)
+        {
+            _currentStep.UIElement = SmartElementRecorder.ConvertToUIElementInfo(strategy.RecordedElement);
+            LogMessage("ℹ️ UIElement bilgisi akıllı kayıttan dolduruldu.");
+        }
+
         if (_currentStep.UIElement == null)
         {
             ShowMessage("Lütfen önce bir UI element seçin!", "Uyarı", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
 
-        // Strateji seçilmemiş ise uyar
-        if (_selectedStrategy == null)
-        {
-            ShowMessage("Lütfen önce 'Tüm Stratejileri Test Et' butonuna tıklayıp bir strateji seçin!",
-                "Uyarı", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            return;
-        }
-
         LogMessage("UI Element test ediliyor...");
         LogMessage($"Element: {_currentStep.UIElement.Name}");
-        LogMessage($"Strateji: {_selectedStrategy.Name}");
+        LogMessage($"Strateji: {strategy.Name}");
         LogMessage($"Action: {cmbActionType.Text}");
 
         // DEBUG: Window bilgisini logla
@@ -446,14 +459,42 @@ public partial class TaskChainRecorderForm : Form
         try
         {
             // Seçili strateji ile elementi bul (windowInfo ile hızlandırma)
-            var element = ElementLocatorTester.FindElementByStrategy(_selectedStrategy, _currentStep.UIElement);
+            AutomationElement? element = null;
+
+            if (strategy == _selectedSmartStrategy && _smartRecorder != null)
+            {
+                var smartSuccess = _smartRecorder.ExecuteLocatorStrategy(strategy);
+                if (!smartSuccess)
+                {
+                    LogMessage("⚠ Akıllı strateji ile element bulunamadı!");
+                    if (lblTestResult != null)
+                    {
+                        lblTestResult.Text = $"⚠ Element bulunamadı - Strateji: {strategy.Name}";
+                        lblTestResult.ForeColor = Color.Orange;
+                    }
+                    return;
+                }
+
+                // SmartElementRecorder.PlaybackElement doğrudan etkileşimi yaptı; ileri log ver.
+                LogMessage("✅ Akıllı strateji başarıyla yürütüldü.");
+                if (lblTestResult != null)
+                {
+                    lblTestResult.Text = $"✅ Test Başarılı - {strategy.Name}";
+                    lblTestResult.ForeColor = Color.Green;
+                }
+                return;
+            }
+            else
+            {
+                element = ElementLocatorTester.FindElementByStrategy(strategy, _currentStep.UIElement);
+            }
 
             if (element == null)
             {
                 LogMessage("⚠ Element bulunamadı!");
                 if (lblTestResult != null)
                 {
-                    lblTestResult.Text = $"⚠ Element bulunamadı - Strateji: {_selectedStrategy.Name}";
+                    lblTestResult.Text = $"⚠ Element bulunamadı - Strateji: {strategy.Name}";
                     lblTestResult.ForeColor = Color.Orange;
                 }
                 return;
@@ -1241,6 +1282,7 @@ public partial class TaskChainRecorderForm : Form
             _smartStrategies.Clear();
             lstSmartStrategies.Items.Clear();
             txtSmartElementProperties.Text = "";
+            _smartStepAutoSaved = false;
             LogMessage($"[DEBUG] Önceki kayıtlar temizlendi");
 
             // SmartElementRecorder oluştur
@@ -1318,26 +1360,25 @@ public partial class TaskChainRecorderForm : Form
     /// </summary>
     private void OnSmartElementRecorded(object? sender, ElementRecordedEventArgs e)
     {
-        // Thread-safe UI güncelleme
         if (InvokeRequired)
         {
-            Invoke(() =>
+            BeginInvoke(new Action(async () =>
             {
-                LogMessage($"[DEBUG] OnSmartElementRecorded event tetiklendi (Invoke ile)");
-                ProcessSmartRecordedElement(e.Element);
-            });
+                LogMessage("[DEBUG] OnSmartElementRecorded event tetiklendi (Invoke ile)");
+                await ProcessSmartRecordedElementAsync(e.Element);
+            }));
         }
         else
         {
-            LogMessage($"[DEBUG] OnSmartElementRecorded event tetiklendi (direkt)");
-            ProcessSmartRecordedElement(e.Element);
+            LogMessage("[DEBUG] OnSmartElementRecorded event tetiklendi (direkt)");
+            _ = ProcessSmartRecordedElementAsync(e.Element);
         }
     }
 
     /// <summary>
     /// Kaydedilen elementi işler ve stratejileri oluşturur
     /// </summary>
-    private void ProcessSmartRecordedElement(RecordedElement element)
+    private async Task ProcessSmartRecordedElementAsync(RecordedElement element)
     {
         try
         {
@@ -1348,6 +1389,8 @@ public partial class TaskChainRecorderForm : Form
             // Element bilgilerini sakla
             _lastRecordedElement = element;
             LogMessage($"[DEBUG] _lastRecordedElement atandı: {_lastRecordedElement != null}");
+
+            await EnrichWithPlaywrightAsync(element);
 
             // Element bilgilerini göster
             DisplaySmartElementInfo(element);
@@ -1369,6 +1412,39 @@ public partial class TaskChainRecorderForm : Form
         {
             LogMessage($"HATA: Element işlenirken hata: {ex.Message}");
             LogMessage($"HATA detay: {ex.StackTrace}");
+        }
+    }
+
+    private async Task EnrichWithPlaywrightAsync(RecordedElement element)
+    {
+        if (!File.Exists(_medulaHtmlPath))
+        {
+            LogMessage($"⚠️ Playwright kaynak dosyası bulunamadı: {_medulaHtmlPath}");
+            return;
+        }
+
+        try
+        {
+            LogMessage("🌐 Playwright analizi başlatılıyor...");
+            var info = await PlaywrightRowAnalyzer.AnalyzeAsync(element, _medulaHtmlPath);
+            SmartElementRecorder.ApplyPlaywrightMetadata(element, info);
+
+            if (!string.IsNullOrEmpty(info.ErrorMessage))
+            {
+                LogMessage($"⚠️ Playwright analizi uyarısı: {info.ErrorMessage}");
+            }
+            else
+            {
+                LogMessage($"✅ Playwright analizi tamamlandı. {info.Selectors.Count} selector üretildi.");
+                if (info.Selectors.TryGetValue("table-row", out var selector))
+                {
+                    LogMessage($"   Önerilen selector: {selector}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            LogMessage($"⚠️ Playwright analizi başarısız: {ex.Message}");
         }
     }
 
@@ -1397,6 +1473,36 @@ public partial class TaskChainRecorderForm : Form
             sb.AppendLine($"Tip: {element.ElementType}");
             sb.AppendLine($"Name: {element.Name ?? "?"}");
             sb.AppendLine($"Class: {element.ClassName ?? "?"}");
+        }
+
+        if (element.PlaywrightInfo != null)
+        {
+            sb.AppendLine();
+            sb.AppendLine("Playwright:");
+
+            if (!string.IsNullOrEmpty(element.PlaywrightInfo.TableSelector))
+            {
+                sb.AppendLine($"  Tablo: {element.PlaywrightInfo.TableSelector}");
+            }
+
+            if (element.PlaywrightInfo.RowIndex >= 0)
+            {
+                sb.AppendLine($"  Satır Index: {element.PlaywrightInfo.RowIndex}");
+            }
+
+            if (element.PlaywrightInfo.Selectors.TryGetValue("table-row", out var tableRowSelector))
+            {
+                sb.AppendLine($"  Selector: {tableRowSelector}");
+            }
+            else if (element.PlaywrightInfo.Selectors.TryGetValue("css", out var cssSelector))
+            {
+                sb.AppendLine($"  CSS: {cssSelector}");
+            }
+
+            if (!string.IsNullOrEmpty(element.PlaywrightInfo.ErrorMessage))
+            {
+                sb.AppendLine($"  Uyarı: {element.PlaywrightInfo.ErrorMessage}");
+            }
         }
 
         txtSmartElementProperties.Text = sb.ToString();
@@ -1528,24 +1634,81 @@ public partial class TaskChainRecorderForm : Form
             {
                 LogMessage($"\n[Test] {strategy.Name}: {strategy.Description}");
 
-                // SmartElementRecorder'ın ExecuteLocatorStrategy metodunu kullan
-                var success = _smartRecorder?.ExecuteLocatorStrategy(strategy) ?? false;
+                var stopwatch = Stopwatch.StartNew();
+                var errors = new List<string>();
+                var success = false;
+                var playwrightSuccess = false;
+                var uiaSuccess = false;
 
+                if (File.Exists(_medulaHtmlPath))
+                {
+                    try
+                    {
+                        playwrightSuccess = await PlaywrightRowAnalyzer.TestStrategyAsync(strategy, _medulaHtmlPath);
+                        if (playwrightSuccess)
+                        {
+                            LogMessage("  ✅ Playwright testi başarılı (statik sayfa)");
+                        }
+                        else
+                        {
+                            errors.Add("Playwright testi başarısız");
+                            LogMessage("  ⚠️ Playwright testi başarısız");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        errors.Add($"Playwright hatası: {ex.Message}");
+                        LogMessage($"  ⚠️ Playwright hatası: {ex.Message}");
+                    }
+                }
+                else
+                {
+                    errors.Add("Playwright kaynağı bulunamadı");
+                    LogMessage($"  ⚠️ Playwright kaynağı bulunamadı: {_medulaHtmlPath}");
+                }
+
+                if (_smartRecorder != null)
+                {
+                    uiaSuccess = _smartRecorder.ExecuteLocatorStrategy(strategy);
+                    if (uiaSuccess)
+                    {
+                        LogMessage("  ✅ UI Automation testi başarılı");
+                    }
+                    else
+                    {
+                        errors.Add("UI Automation testi başarısız");
+                        LogMessage("  ❌ UI Automation testi başarısız");
+                        if (playwrightSuccess)
+                        {
+                            LogMessage("  ⚠️ Not: Playwright selector statik sayfada çalıştı ancak canlı UI bulunamadı.");
+                        }
+                    }
+                }
+                else
+                {
+                    errors.Add("SmartElementRecorder hazır değil");
+                    LogMessage("  ⚠️ SmartElementRecorder hazır değil, UI Automation testi atlandı");
+                }
+
+                success = uiaSuccess;
+
+                stopwatch.Stop();
+
+                strategy.TestDurationMs = (int)stopwatch.ElapsedMilliseconds;
                 strategy.IsSuccessful = success;
-                strategy.ErrorMessage = success ? null : "Element bulunamadı";
+                strategy.ErrorMessage = success ? null : string.Join(" | ", errors.Distinct());
 
                 if (success)
                 {
                     successCount++;
-                    LogMessage($"  ✅ BAŞARILI - Element bulundu ve tıklandı!");
+                    LogMessage("  ✅ SONUÇ: Başarılı");
                 }
                 else
                 {
-                    LogMessage($"  ❌ BAŞARISIZ - Element bulunamadı");
+                    LogMessage("  ❌ SONUÇ: Başarısız");
                 }
 
-                // Her test arasında kısa bekleme
-                await Task.Delay(500);
+                await Task.Delay(200);
             }
             catch (Exception ex)
             {
@@ -1565,11 +1728,20 @@ public partial class TaskChainRecorderForm : Form
 
         if (successCount > 0)
         {
-            LogMessage("✅ En az bir strateji çalışıyor! Liste'den seçip 'Adımı Kaydet' yapabilirsiniz.");
+            LogMessage("✅ En az bir strateji çalışıyor. İlk başarılı strateji otomatik olarak seçiliyor.");
+
+            var bestStrategy = _smartStrategies.First(s => s.IsSuccessful);
+            var bestIndex = _smartStrategies.IndexOf(bestStrategy);
+            if (bestIndex >= 0)
+            {
+                lstSmartStrategies.SelectedIndex = bestIndex;
+            }
+
+            AutoSaveSmartStepIfPossible(bestStrategy);
         }
         else
         {
-            LogMessage("❌ Hiçbir strateji çalışmadı. Element yapısını kontrol edin.");
+            LogMessage("❌ Hiçbir strateji çalışmadı. Element yapısını ve kayıt adımlarını kontrol edin.");
         }
     }
 
@@ -1587,6 +1759,34 @@ public partial class TaskChainRecorderForm : Form
             var text = $"{prefix} [{i + 1}] {strategy.Name}: {strategy.Description}";
             lstSmartStrategies.Items.Add(text);
         }
+    }
+
+    private void AutoSaveSmartStepIfPossible(ElementLocatorStrategy strategy)
+    {
+        if (_smartStepAutoSaved)
+        {
+            LogMessage("ℹ️ Adım daha önce kaydedildi, otomatik kayıt atlanıyor.");
+            return;
+        }
+
+        if (_lastRecordedElement == null)
+        {
+            LogMessage("⚠️ Otomatik kayıt için RecordedElement bulunamadı.");
+            return;
+        }
+
+        if (_currentStep.StepType != StepType.UIElementAction)
+        {
+            cmbStepType.SelectedIndex = 1;
+            _currentStep.StepType = StepType.UIElementAction;
+        }
+
+        _selectedSmartStrategy = strategy;
+        _currentStep.UIElement = SmartElementRecorder.ConvertToUIElementInfo(_lastRecordedElement);
+
+        LogMessage("💾 Test başarılı - adım otomatik olarak kaydediliyor.");
+        btnSaveStep_Click(null, EventArgs.Empty);
+        _smartStepAutoSaved = true;
     }
 
     /// <summary>
@@ -1617,6 +1817,48 @@ public partial class TaskChainRecorderForm : Form
         if (!strategy.IsSuccessful && !string.IsNullOrEmpty(strategy.ErrorMessage))
         {
             LogMessage($"   Hata: {strategy.ErrorMessage}");
+        }
+    }
+
+    #endregion
+
+    #region Tip 3 - Koşullu Dallanma
+
+    /// <summary>
+    /// Koşullu dallanma kaydedici formunu aç
+    /// </summary>
+    private void OpenConditionalBranchRecorder()
+    {
+        try
+        {
+            using var form = new ConditionalBranchRecorderForm();
+
+            if (form.ShowDialog(this) == DialogResult.OK && form.Result != null)
+            {
+                // Koşul bilgisini mevcut adıma kaydet
+                _currentStep.Condition = form.Result;
+                _currentStep.Description = $"Koşullu Dallanma: {form.Result.PageIdentifier ?? "Sayfa kontrolü"}";
+
+                LogMessage($"✓ Koşullu dallanma kaydedildi:");
+                LogMessage($"  - Sayfa: {form.Result.PageIdentifier}");
+                LogMessage($"  - Koşul sayısı: {form.Result.Conditions.Count}");
+                LogMessage($"  - Dal sayısı: {form.Result.Branches.Count}");
+
+                // Adımı otomatik kaydet
+                btnSaveStep_Click(null, EventArgs.Empty);
+            }
+            else
+            {
+                LogMessage("Koşullu dallanma kaydı iptal edildi.");
+                cmbStepType.SelectedIndex = 0; // Tip 1'e geri dön
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowMessage($"Koşullu dallanma kaydedici açılırken hata oluştu:\n{ex.Message}",
+                "Hata", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            LogMessage($"❌ Hata: {ex.Message}");
+            cmbStepType.SelectedIndex = 0; // Tip 1'e geri dön
         }
     }
 

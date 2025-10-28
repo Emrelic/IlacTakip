@@ -10,7 +10,8 @@
       "Bash(Select-String -Pattern \"error|warning\" -Context 0,2)",
       "Bash(powershell:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(git push)"
     ],
     "deny": [],
     "ask": []

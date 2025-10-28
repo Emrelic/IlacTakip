@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
 using System.IO;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
@@ -162,6 +163,9 @@ namespace MedulaOtomasyon
                 // 3. Text içeriğine göre dene
                 if (TryClickByTextContent(element)) return true;
 
+                // 4. Son çare koordinat ile tıkla
+                if (TryClickByCoordinates(element)) return true;
+
                 LogError("❌ Element bulunamadı!");
                 return false;
             }
@@ -224,6 +228,12 @@ namespace MedulaOtomasyon
                 LogInfo($"   ClassName: {element.Current.ClassName}");
                 LogInfo($"   ControlType: {element.Current.ControlType.ProgrammaticName}");
 
+                if (IsRecorderWindowElement(element))
+                {
+                    LogInfo("ℹ️ Görev kaydedici arayüzü tıklaması algılandı, yok sayılıyor.");
+                    return;
+                }
+
                 // Tablo satırı mı kontrol et
                 var recordedElement = AnalyzeElement(element, screenPoint);
 
@@ -274,6 +284,65 @@ namespace MedulaOtomasyon
         #endregion
 
         #region Private Methods - Element Analysis
+
+        private bool IsRecorderWindowElement(AutomationElement element)
+        {
+            try
+            {
+                var window = GetTopLevelWindow(element);
+                if (window == null) return false;
+
+                var windowProcessId = window.Current.ProcessId;
+                var currentProcessId = Process.GetCurrentProcess().Id;
+
+                if (windowProcessId == currentProcessId)
+                {
+                    var windowName = window.Current.Name ?? string.Empty;
+                    if (!string.IsNullOrWhiteSpace(windowName) &&
+                        windowName.Contains("Görev Zinciri Kaydedici", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return true;
+                    }
+
+                    var automationId = window.Current.AutomationId ?? string.Empty;
+                    if (automationId.Equals("TaskChainRecorderForm", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return true;
+                    }
+                }
+            }
+            catch
+            {
+                // ignore detection failures
+            }
+
+            return false;
+        }
+
+        private AutomationElement? GetTopLevelWindow(AutomationElement element)
+        {
+            var walker = TreeWalker.RawViewWalker;
+            var current = element;
+
+            while (current != null)
+            {
+                try
+                {
+                    if (current.Current.ControlType == ControlType.Window)
+                    {
+                        return current;
+                    }
+                }
+                catch
+                {
+                    break;
+                }
+
+                current = walker.GetParent(current);
+            }
+
+            return null;
+        }
 
         /// <summary>
         /// Elementi analiz eder ve tablo satırı ise bilgilerini çıkarır
@@ -386,6 +455,7 @@ namespace MedulaOtomasyon
             };
 
             LogSuccess($"✅ RecordedElement oluşturuldu!");
+            PopulateWindowInfo(recordedElement, element);
             return recordedElement;
         }
 
@@ -600,6 +670,8 @@ namespace MedulaOtomasyon
 
                 LogSuccess($"✅ WebBrowser kontrolü bulundu");
                 LogInfo($"   Browser ClassName: {browser.Current.ClassName}");
+                LogInfo($"   Browser PID: {browser.Current.ProcessId}");
+                LogInfo($"   Browser HWND: {browser.Current.NativeWindowHandle}");
 
                 // MSHTML Document'i al (dynamic olarak)
                 dynamic? doc = GetHtmlDocument(browser);
@@ -648,7 +720,9 @@ namespace MedulaOtomasyon
                     TagName = tagName.ToLowerInvariant(),
                     Id = id,
                     ClassName = className,
-                    Attributes = new Dictionary<string, string>()
+                    Attributes = new Dictionary<string, string>(),
+                    BrowserProcessId = browser.Current.ProcessId,
+                    BrowserWindowHandle = browser.Current.NativeWindowHandle
                 };
 
                 // Tablo bilgisini topla
@@ -859,7 +933,7 @@ namespace MedulaOtomasyon
         /// <summary>
         /// Process'teki açık IE/MSHTML window'lardan document bulur (dynamic COM)
         /// </summary>
-        private dynamic? FindHtmlDocumentInProcess()
+        private dynamic? FindHtmlDocumentInProcess(int? targetHwnd = null, int? targetProcessId = null)
         {
             try
             {
@@ -886,7 +960,18 @@ namespace MedulaOtomasyon
                         {
                             string url = doc.url?.ToString() ?? "";
                             LogInfo($"Found HTML document: {url}");
-                            return doc;
+                            try
+                            {
+                                int? windowHandle = null;
+                                try { windowHandle = (int)window.HWND; }
+                                catch { }
+
+                                if (!targetHwnd.HasValue || (windowHandle.HasValue && windowHandle.Value == targetHwnd.Value))
+                                {
+                                    return doc;
+                                }
+                            }
+                            catch { }
                         }
                     }
                     catch { }
@@ -898,6 +983,48 @@ namespace MedulaOtomasyon
             }
 
             return null;
+        }
+
+        private dynamic? GetDocumentForRecordedElement(RecordedElement element)
+        {
+            try
+            {
+                var htmlInfo = element.HtmlInfo;
+                if (htmlInfo != null)
+                {
+                    if (htmlInfo.BrowserWindowHandle != 0)
+                    {
+                        var handleDoc = GetHtmlDocumentFromHwnd(htmlInfo.BrowserWindowHandle);
+                        if (handleDoc != null)
+                        {
+                            LogInfo("Using cached browser window handle for HTML document");
+                            return handleDoc;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogWarning($"GetDocumentForRecordedElement (handle) failed: {ex.Message}");
+            }
+
+            int? targetHwnd = null;
+            if (element.HtmlInfo?.BrowserWindowHandle > 0)
+            {
+                targetHwnd = element.HtmlInfo.BrowserWindowHandle;
+            }
+
+            int? targetPid = null;
+            if (element.HtmlInfo?.BrowserProcessId > 0)
+            {
+                targetPid = element.HtmlInfo.BrowserProcessId;
+            }
+
+            var resolvedDoc = FindHtmlDocumentInProcess(targetHwnd, targetPid);
+            if (resolvedDoc != null)
+                return resolvedDoc;
+
+            return FindHtmlDocumentInProcess();
         }
 
         /// <summary>
@@ -1331,7 +1458,7 @@ namespace MedulaOtomasyon
         /// </summary>
         private RecordedElement CreateGenericElement(AutomationElement element, Point clickPoint)
         {
-            return new RecordedElement
+            var recorded = new RecordedElement
             {
                 ElementType = "Generic",
                 Timestamp = DateTime.Now,
@@ -1342,6 +1469,63 @@ namespace MedulaOtomasyon
                 ControlType = element.Current.ControlType.ProgrammaticName,
                 Description = $"Generic: {element.Current.Name ?? element.Current.ClassName}"
             };
+
+            PopulateWindowInfo(recorded, element);
+            return recorded;
+        }
+
+        private void PopulateWindowInfo(RecordedElement recordedElement, AutomationElement element)
+        {
+            if (recordedElement == null || element == null)
+                return;
+
+            try
+            {
+                var window = GetTopLevelWindow(element);
+                if (window == null)
+                    return;
+
+                recordedElement.WindowTitle = window.Current.Name;
+                recordedElement.WindowName = window.Current.Name;
+                recordedElement.WindowClassName = window.Current.ClassName;
+                recordedElement.WindowAutomationId = window.Current.AutomationId;
+                recordedElement.WindowProcessId = window.Current.ProcessId;
+
+                try
+                {
+                    var rect = window.Current.BoundingRectangle;
+                    recordedElement.WindowRelativeX = recordedElement.ScreenPoint.X - (int)rect.Left;
+                    recordedElement.WindowRelativeY = recordedElement.ScreenPoint.Y - (int)rect.Top;
+                }
+                catch
+                {
+                    recordedElement.WindowRelativeX = null;
+                    recordedElement.WindowRelativeY = null;
+                }
+
+                try
+                {
+                    recordedElement.WindowHandle = window.Current.NativeWindowHandle;
+                }
+                catch
+                {
+                    recordedElement.WindowHandle = 0;
+                }
+
+                try
+                {
+                    var process = Process.GetProcessById(window.Current.ProcessId);
+                    recordedElement.WindowProcessName = process.ProcessName;
+                }
+                catch
+                {
+                    recordedElement.WindowProcessName = null;
+                }
+            }
+            catch (Exception ex)
+            {
+                LogWarning($"PopulateWindowInfo failed: {ex.Message}");
+            }
         }
 
         #endregion
@@ -1431,23 +1615,24 @@ namespace MedulaOtomasyon
 
         #region Private Methods - Playback
 
-        private bool TryClickByXPath(RecordedElement element)
+        private bool TryClickByXPath(RecordedElement element, string? overrideXPath = null)
         {
-            if (string.IsNullOrEmpty(element.XPath)) return false;
+            var xpathToUse = overrideXPath ?? element.XPath;
+            if (string.IsNullOrEmpty(xpathToUse)) return false;
 
             try
             {
-                LogInfo($"Trying XPath: {element.XPath}");
+                LogInfo($"Trying XPath: {xpathToUse}");
 
                 // MSHTML document'i bul
-                var doc = FindHtmlDocumentInProcess();
+                var doc = GetDocumentForRecordedElement(element);
                 if (doc == null) return false;
 
                 dynamic? target = null;
 
                 // Önce ID ile dene
                 var htmlInfo = element.HtmlInfo;
-                if (!string.IsNullOrEmpty(htmlInfo?.Id))
+                if (!string.IsNullOrEmpty(htmlInfo?.Id) && overrideXPath == null)
                 {
                     target = GetElementById(doc, htmlInfo.Id);
                 }
@@ -1455,7 +1640,7 @@ namespace MedulaOtomasyon
                 // XPath string'ini çözümle
                 if (target == null)
                 {
-                    target = FindElementBySimpleXPath(doc, element.XPath);
+                    target = FindElementBySimpleXPath(doc, xpathToUse);
                 }
 
                 // Hücre ID'lerinden TR'ye ulaş
@@ -1491,6 +1676,65 @@ namespace MedulaOtomasyon
             }
             catch
             {
+                return false;
+            }
+        }
+
+        private bool TryExecutePlaywrightSelector(RecordedElement recordedElement, ElementLocatorStrategy strategy)
+        {
+            try
+            {
+                if (!strategy.Properties.TryGetValue("SelectorKind", out var kindRaw))
+                    return false;
+
+                var kind = kindRaw?.Trim().ToLowerInvariant() ?? string.Empty;
+
+                if (strategy.Properties.TryGetValue("BrowserWindowHandle", out var handleStr) &&
+                    int.TryParse(handleStr, out var handle) && handle > 0)
+                {
+                    recordedElement.HtmlInfo ??= new HtmlInfo();
+                    recordedElement.HtmlInfo.BrowserWindowHandle = handle;
+                }
+
+                if (strategy.Properties.TryGetValue("BrowserProcessId", out var pidStr) &&
+                    int.TryParse(pidStr, out var pid) && pid > 0)
+                {
+                    recordedElement.HtmlInfo ??= new HtmlInfo();
+                    recordedElement.HtmlInfo.BrowserProcessId = pid;
+                }
+
+                switch (kind)
+                {
+                    case "table-row":
+                    case "row-index":
+                        return TryClickByTableRowIndex(recordedElement) || TryClickHtmlRowByIndex(recordedElement);
+
+                    case "css":
+                        if (strategy.Properties.TryGetValue("Selector", out var cssSelector))
+                        {
+                            if (TryClickByCssSelector(recordedElement, cssSelector))
+                                return true;
+                        }
+                        return TryClickHtmlRowByIndex(recordedElement);
+
+                    case "xpath":
+                        if (strategy.Properties.TryGetValue("Selector", out var xpathSelector))
+                        {
+                            if (TryClickByXPath(recordedElement, xpathSelector))
+                                return true;
+                        }
+                        return TryClickHtmlRowByIndex(recordedElement);
+
+                    case "text":
+                        return TryClickByTextContent(recordedElement);
+
+                    default:
+                        return false;
+                }
+            }
+            catch (Exception ex)
+            {
+                LogWarning($"Playwright selector execution failed: {ex.Message}");
                 return false;
             }
         }
@@ -1580,7 +1824,7 @@ namespace MedulaOtomasyon
                 LogInfo($"Trying Text Content (MSHTML): {string.Join(", ", referenceTexts.Take(3))}");
 
                 // MSHTML document'i bul
-                var doc = FindHtmlDocumentInProcess();
+                var doc = GetDocumentForRecordedElement(element);
                 if (doc == null)
                 {
                     LogWarning("HTML Document not found");
@@ -1654,6 +1898,160 @@ namespace MedulaOtomasyon
             return false;
         }
 
+        private bool TryClickByCoordinates(RecordedElement element)
+        {
+            try
+            {
+                int targetX = element.ScreenPoint.X;
+                int targetY = element.ScreenPoint.Y;
+                var hwnd = element.WindowHandle != 0 ? new IntPtr(element.WindowHandle) : IntPtr.Zero;
+
+                if (hwnd != IntPtr.Zero)
+                {
+                    try
+                    {
+                        if (IsIconic(hwnd))
+                        {
+                            ShowWindow(hwnd, SW_RESTORE);
+                        }
+
+                        SetForegroundWindow(hwnd);
+                        Thread.Sleep(150);
+
+                        if (GetWindowRect(hwnd, out var rect) &&
+                            element.WindowRelativeX.HasValue &&
+                            element.WindowRelativeY.HasValue)
+                        {
+                            targetX = rect.Left + element.WindowRelativeX.Value;
+                            targetY = rect.Top + element.WindowRelativeY.Value;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        LogWarning($"Coordinate window prep failed: {ex.Message}");
+                    }
+                }
+
+                if (targetX <= 0 && targetY <= 0)
+                {
+                    LogWarning("Coordinate fallback aborted: invalid target point");
+                    return false;
+                }
+
+                SimulateClick(new System.Windows.Point(targetX, targetY));
+                LogSuccess("✅ Clicked via coordinate fallback");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                LogWarning($"Coordinate click failed: {ex.Message}");
+                return false;
+            }
+        }
+
+        private bool TryClickByCssSelector(RecordedElement element, string? cssSelector)
+        {
+            if (string.IsNullOrWhiteSpace(cssSelector))
+                return false;
+
+            try
+            {
+                var doc = GetDocumentForRecordedElement(element);
+                if (doc == null)
+                    return false;
+
+                dynamic? match = null;
+                try
+                {
+                    match = doc.querySelector(cssSelector);
+                }
+                catch (Exception ex)
+                {
+                    LogWarning($"querySelector failed: {ex.Message}");
+                }
+
+                if (match != null)
+                {
+                    try
+                    {
+                        var ownerDocumentObj = (object?)match.ownerDocument;
+                        if (ownerDocumentObj != null && element.HtmlInfo != null)
+                        {
+                            dynamic ownerDocument = ownerDocumentObj;
+                            dynamic? windowObj = null;
+                            try { windowObj = ownerDocument.parentWindow; }
+                            catch { windowObj = null; }
+
+                            if (windowObj != null)
+                            {
+                                try
+                                {
+                                    int hwnd = 0;
+                                    object? handleCandidate = null;
+
+                                    try
+                                    {
+                                        var type = ((object)windowObj).GetType();
+                                        handleCandidate = type.GetProperty("HWND")?.GetValue(windowObj);
+                                    }
+                                    catch
+                                    {
+                                        handleCandidate = null;
+                                    }
+
+                                    if (handleCandidate != null && int.TryParse(handleCandidate.ToString(), out hwnd) && hwnd != 0)
+                                    {
+                                        element.HtmlInfo ??= new HtmlInfo();
+                                        element.HtmlInfo.BrowserWindowHandle = hwnd;
+                                    }
+                                }
+                                catch { }
+                            }
+                        }
+                    }
+                    catch { }
+
+                    ClickHtmlElement(match);
+                    LogSuccess("✅ Clicked via CSS selector");
+                    return true;
+                }
+
+                var rowIndex = ExtractNthOfTypeIndex(cssSelector, "tr");
+                if (rowIndex > 0)
+                {
+                    element.TableInfo ??= new TableInfo();
+                    if (element.TableInfo.RowIndex < 0)
+                        element.TableInfo.RowIndex = rowIndex - 1;
+                    return TryClickHtmlRowByIndex(element);
+                }
+            }
+            catch (Exception ex)
+            {
+                LogWarning($"CSS selector execution failed: {ex.Message}");
+            }
+
+            return false;
+        }
+
+        private static int ExtractNthOfTypeIndex(string selector, string tagName)
+        {
+            if (string.IsNullOrWhiteSpace(selector) || string.IsNullOrWhiteSpace(tagName))
+                return -1;
+
+            try
+            {
+                var pattern = $"{tagName}\\s*:\\s*nth-of-type\\((\\d+)\\)";
+                var match = Regex.Match(selector, pattern, RegexOptions.IgnoreCase);
+                if (match.Success && int.TryParse(match.Groups[1].Value, out var index))
+                {
+                    return index;
+                }
+            }
+            catch { }
+
+            return -1;
+        }
+
         private bool TryClickHtmlRowByIndex(RecordedElement element)
         {
             var htmlInfo = element.HtmlInfo;
@@ -1662,7 +2060,7 @@ namespace MedulaOtomasyon
 
             try
             {
-                var doc = FindHtmlDocumentInProcess();
+                var doc = GetDocumentForRecordedElement(element);
                 if (doc == null) return false;
 
                 string? tableId = element.TableInfo?.HtmlTableId ?? htmlInfo?.TableId;
@@ -1693,6 +2091,42 @@ namespace MedulaOtomasyon
                 if (row == null && htmlInfo != null)
                 {
                     row = FindRowByHtmlInfo(doc, htmlInfo);
+                }
+
+                if (row == null && rowIndex >= 0)
+                {
+                    try
+                    {
+                        dynamic tables = doc.getElementsByTagName("table");
+                        if (tables != null)
+                        {
+                            int tableCount = 0;
+                            try { tableCount = (int)tables.length; }
+                            catch { tableCount = 0; }
+
+                            for (int t = 0; t < tableCount && row == null; t++)
+                            {
+                                dynamic tableCandidate = tables.item(t);
+                                if (tableCandidate == null) continue;
+
+                                dynamic rows = tableCandidate.rows;
+                                if (rows == null) continue;
+
+                                int rowsCount = 0;
+                                try { rowsCount = (int)rows.length; }
+                                catch { rowsCount = 0; }
+
+                                if (rowIndex >= 0 && rowIndex < rowsCount)
+                                {
+                                    row = rows.item(rowIndex);
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        LogWarning($"Fallback table scan failed: {ex.Message}");
+                    }
                 }
 
                 if (row == null) return false;
@@ -1772,12 +2206,62 @@ namespace MedulaOtomasyon
             return Regex.Replace(input ?? string.Empty, @"\s+", " ").Trim();
         }
 
+        private static string? ExtractTableId(string? selector)
+        {
+            if (string.IsNullOrWhiteSpace(selector))
+                return null;
+
+            var match = Regex.Match(selector, @"table\s*#([A-Za-z0-9_\-:]+)");
+            if (match.Success)
+            {
+                return match.Groups[1].Value;
+            }
+
+            return null;
+        }
+
+        private static string? ExtractTableClass(string? selector)
+        {
+            if (string.IsNullOrWhiteSpace(selector))
+                return null;
+
+            var match = Regex.Match(selector, @"table\.([A-Za-z0-9_\-\.]+)");
+            if (match.Success)
+            {
+                return match.Groups[1].Value.Replace('.', ' ');
+            }
+
+            return null;
+        }
+
         [DllImport("user32.dll")]
         private static extern void mouse_event(uint dwFlags, int dx, int dy, uint dwData, int dwExtraInfo);
+
+        [DllImport("user32.dll")]
+        private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        private static extern bool IsIconic(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+        [DllImport("user32.dll")]
+        private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
 
         private const uint MOUSEEVENTF_LEFTDOWN = 0x0002;
         private const uint MOUSEEVENTF_LEFTUP = 0x0004;
         private const uint MOUSEEVENTF_ABSOLUTE = 0x8000;
+        private const int SW_RESTORE = 9;
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct RECT
+        {
+            public int Left;
+            public int Top;
+            public int Right;
+            public int Bottom;
+        }
 
         private void SimulateClick(System.Windows.Point point)
         {
@@ -1834,6 +2318,7 @@ namespace MedulaOtomasyon
                 ClassName = recordedElement.ClassName,
                 ControlType = recordedElement.ControlType,
                 CapturedAt = recordedElement.Timestamp,
+                WindowProcessId = recordedElement.HtmlInfo?.BrowserProcessId,
 
                 // HTML bilgileri (varsa)
                 HtmlId = recordedElement.HtmlInfo?.Id,
@@ -1853,6 +2338,36 @@ namespace MedulaOtomasyon
                 // Tespit metodu
                 DetectionMethod = recordedElement.HtmlInfo != null ? "MSHTML" : "UIAutomation"
             };
+
+            if (recordedElement.WindowHandle > 0)
+            {
+                uiElement.WindowId = recordedElement.WindowHandle.ToString();
+            }
+
+            if (!string.IsNullOrEmpty(recordedElement.WindowTitle))
+            {
+                uiElement.WindowTitle = recordedElement.WindowTitle;
+                uiElement.WindowName = recordedElement.WindowName ?? recordedElement.WindowTitle;
+            }
+
+            if (!string.IsNullOrEmpty(recordedElement.WindowClassName))
+            {
+                uiElement.WindowClassName = recordedElement.WindowClassName;
+            }
+
+            if (!string.IsNullOrEmpty(recordedElement.WindowProcessName))
+            {
+                uiElement.WindowProcessName = recordedElement.WindowProcessName;
+            }
+
+            if (recordedElement.WindowProcessId > 0)
+            {
+                uiElement.WindowProcessId = recordedElement.WindowProcessId;
+            }
+            else if (recordedElement.HtmlInfo?.BrowserProcessId > 0)
+            {
+                uiElement.WindowProcessId = recordedElement.HtmlInfo.BrowserProcessId;
+            }
 
             // Tablo bilgilerini ekle (varsa)
             if (recordedElement.TableInfo != null)
@@ -1892,7 +2407,152 @@ namespace MedulaOtomasyon
                 }
             }
 
+            if (recordedElement.HtmlInfo?.BrowserWindowHandle > 0)
+            {
+                uiElement.OtherAttributes ??= new Dictionary<string, string>();
+                uiElement.OtherAttributes["BrowserWindowHandle"] = recordedElement.HtmlInfo.BrowserWindowHandle.ToString();
+            }
+
+            if (recordedElement.PlaywrightInfo != null)
+            {
+                uiElement.PlaywrightSelector =
+                    recordedElement.PlaywrightInfo.Selectors.GetValueOrDefault("table-row") ??
+                    recordedElement.PlaywrightInfo.Selectors.GetValueOrDefault("css") ??
+                    recordedElement.PlaywrightInfo.Selectors.Values.FirstOrDefault();
+
+                uiElement.OtherAttributes ??= new Dictionary<string, string>();
+
+                if (!string.IsNullOrEmpty(recordedElement.PlaywrightInfo.DomSelector))
+                {
+                    uiElement.OtherAttributes["PlaywrightDomSelector"] = recordedElement.PlaywrightInfo.DomSelector;
+                }
+
+                if (!string.IsNullOrEmpty(recordedElement.PlaywrightInfo.TableSelector))
+                {
+                    uiElement.OtherAttributes["PlaywrightTableSelector"] = recordedElement.PlaywrightInfo.TableSelector;
+                }
+
+                if (recordedElement.PlaywrightInfo.RowIndex >= 0)
+                {
+                    uiElement.OtherAttributes["PlaywrightRowIndex"] = recordedElement.PlaywrightInfo.RowIndex.ToString();
+                }
+
+                if (recordedElement.PlaywrightInfo.Selectors.Any())
+                {
+                    uiElement.OtherAttributes["PlaywrightSelectorsJson"] =
+                        JsonSerializer.Serialize(recordedElement.PlaywrightInfo.Selectors);
+                }
+
+                if (!string.IsNullOrEmpty(recordedElement.PlaywrightInfo.ErrorMessage))
+                {
+                    uiElement.OtherAttributes["PlaywrightError"] = recordedElement.PlaywrightInfo.ErrorMessage;
+                }
+            }
+
             return uiElement;
+        }
+
+        public static void ApplyPlaywrightMetadata(RecordedElement recordedElement, PlaywrightSelectorInfo info)
+        {
+            if (recordedElement == null || info == null)
+                return;
+
+            recordedElement.PlaywrightInfo = info;
+
+            if (info.RowIndex >= 0 || !string.IsNullOrEmpty(info.TableSelector))
+            {
+                recordedElement.ElementType = "TableRow";
+                recordedElement.TableInfo ??= new TableInfo();
+
+                if (info.RowIndex >= 0)
+                {
+                    recordedElement.TableInfo.RowIndex = info.RowIndex;
+                    recordedElement.TableInfo.HtmlRowIndex = info.RowIndex;
+                }
+
+                var tableId = ExtractTableId(info.TableSelector);
+                var tableClass = ExtractTableClass(info.TableSelector);
+
+                if (!string.IsNullOrEmpty(tableId))
+                {
+                    recordedElement.TableInfo.TableId ??= tableId;
+                    recordedElement.TableInfo.HtmlTableId ??= tableId;
+                }
+
+                if (!string.IsNullOrEmpty(tableClass))
+                {
+                    recordedElement.TableInfo.HtmlTableClass ??= tableClass;
+                }
+
+                if (info.CellTexts.Any())
+                {
+                    recordedElement.TableInfo.CellTexts = info.CellTexts.ToList();
+                }
+            }
+
+            recordedElement.HtmlInfo ??= new HtmlInfo();
+            var htmlInfo = recordedElement.HtmlInfo;
+            htmlInfo.TagName ??= "tr";
+            if (info.RowIndex >= 0)
+            {
+                htmlInfo.TableRowIndex = info.RowIndex;
+            }
+
+            var selectorId = ExtractTableId(info.TableSelector);
+            if (!string.IsNullOrEmpty(selectorId))
+            {
+                htmlInfo.TableId ??= selectorId;
+            }
+
+            var selectorClass = ExtractTableClass(info.TableSelector);
+            if (!string.IsNullOrEmpty(selectorClass))
+            {
+                htmlInfo.TableClassName ??= selectorClass;
+            }
+
+            if ((htmlInfo.TextContent == null || htmlInfo.TextContent.Count == 0) && info.CellTexts.Any())
+            {
+                htmlInfo.TextContent = info.CellTexts.ToList();
+            }
+
+            if (htmlInfo.Attributes == null)
+            {
+                htmlInfo.Attributes = new Dictionary<string, string>();
+            }
+
+                if (!string.IsNullOrEmpty(info.DomId))
+                {
+                    htmlInfo.Attributes["id"] = info.DomId;
+                    htmlInfo.Id ??= info.DomId;
+                }
+
+                if (!string.IsNullOrEmpty(info.DomClass))
+                {
+                    htmlInfo.Attributes["class"] = info.DomClass;
+                    htmlInfo.ClassName ??= info.DomClass;
+                }
+
+                if (info.Selectors.TryGetValue("table-row", out var tableSelector) && !string.IsNullOrEmpty(tableSelector))
+                {
+                    var rowIndex = ExtractNthOfTypeIndex(tableSelector, "tr");
+                    if (rowIndex > 0)
+                    {
+                        htmlInfo.TableRowIndex = rowIndex - 1;
+                        recordedElement.TableInfo ??= new TableInfo();
+                        recordedElement.TableInfo.RowIndex = rowIndex - 1;
+                        recordedElement.TableInfo.HtmlRowIndex = rowIndex - 1;
+                    }
+                }
+
+                if (!string.IsNullOrEmpty(info.XPath))
+                {
+                    recordedElement.XPath = info.XPath;
+                }
+
+            if (!string.IsNullOrEmpty(info.CssPath))
+            {
+                recordedElement.CssSelector = info.CssPath;
+            }
         }
 
         /// <summary>
@@ -1904,6 +2564,50 @@ namespace MedulaOtomasyon
                 throw new ArgumentNullException(nameof(recordedElement));
 
             var strategies = new List<ElementLocatorStrategy>();
+
+            if (recordedElement.PlaywrightInfo?.Selectors?.Any() == true)
+            {
+                foreach (var kvp in recordedElement.PlaywrightInfo.Selectors)
+                {
+                    if (string.IsNullOrWhiteSpace(kvp.Value))
+                        continue;
+
+                    var properties = new Dictionary<string, string>
+                    {
+                        ["SelectorKind"] = kvp.Key,
+                        ["Selector"] = kvp.Value
+                    };
+
+                    if (recordedElement.PlaywrightInfo.RowIndex >= 0)
+                    {
+                        properties["RowIndex"] = recordedElement.PlaywrightInfo.RowIndex.ToString();
+                    }
+
+                    if (!string.IsNullOrEmpty(recordedElement.PlaywrightInfo.TableSelector))
+                    {
+                        properties["TableSelector"] = recordedElement.PlaywrightInfo.TableSelector;
+                    }
+
+                    if (recordedElement.HtmlInfo?.BrowserWindowHandle > 0)
+                    {
+                        properties["BrowserWindowHandle"] = recordedElement.HtmlInfo.BrowserWindowHandle.ToString();
+                    }
+
+                    if (recordedElement.HtmlInfo?.BrowserProcessId > 0)
+                    {
+                        properties["BrowserProcessId"] = recordedElement.HtmlInfo.BrowserProcessId.ToString();
+                    }
+
+                    strategies.Add(new ElementLocatorStrategy
+                    {
+                        Name = $"Playwright {kvp.Key}",
+                        Description = $"Playwright selector ({kvp.Key}): {kvp.Value}",
+                        Type = LocatorType.PlaywrightSelector,
+                        Properties = properties,
+                        RecordedElement = recordedElement
+                    });
+                }
+            }
 
             // 1. HTML ID (en güvenilir - varsa)
             if (!string.IsNullOrEmpty(recordedElement.HtmlInfo?.Id))
@@ -2052,6 +2756,12 @@ namespace MedulaOtomasyon
             {
                 LogInfo($"🎯 Executing strategy: {strategy.Name}");
 
+                if (strategy.Type == LocatorType.PlaywrightSelector)
+                {
+                    if (TryExecutePlaywrightSelector(strategy.RecordedElement, strategy))
+                        return true;
+                }
+
                 // RecordedElement üzerindeki playback metotlarını kullan
                 return PlaybackElement(strategy.RecordedElement);
             }
@@ -2075,6 +2785,15 @@ namespace MedulaOtomasyon
         public string ElementType { get; set; } = ""; // "TableRow", "Button", "Generic"
         public DateTime Timestamp { get; set; }
         public Point ScreenPoint { get; set; }
+        public string? WindowTitle { get; set; }
+        public string? WindowName { get; set; }
+        public string? WindowClassName { get; set; }
+        public string? WindowAutomationId { get; set; }
+        public string? WindowProcessName { get; set; }
+        public int WindowProcessId { get; set; } = -1;
+        public int WindowHandle { get; set; }
+        public int? WindowRelativeX { get; set; }
+        public int? WindowRelativeY { get; set; }
 
         // UI Automation Properties
         public string? AutomationId { get; set; }
@@ -2091,6 +2810,7 @@ namespace MedulaOtomasyon
         // Selector'lar
         public string? XPath { get; set; }
         public string? CssSelector { get; set; }
+        public PlaywrightSelectorInfo? PlaywrightInfo { get; set; }
 
         // Açıklama
         public string Description { get; set; } = "";
@@ -2124,6 +2844,8 @@ namespace MedulaOtomasyon
         public string? TableClassName { get; set; }
         public int TableRowIndex { get; set; } = -1;
         public List<string> CellIds { get; set; } = new List<string>();
+        public int BrowserProcessId { get; set; } = -1;
+        public int BrowserWindowHandle { get; set; } = 0;
     }
 
     public class ElementRecordedEventArgs : EventArgs

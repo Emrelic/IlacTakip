@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("MedulaOtomasyon")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+5a769ab235ec8f6a79b3e4f56fa2f5ac86c14394")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+d776f4168b674478961d5f87143cbcf02b2dea8a")]
 [assembly: System.Reflection.AssemblyProductAttribute("MedulaOtomasyon")]
 [assembly: System.Reflection.AssemblyTitleAttribute("MedulaOtomasyon")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
