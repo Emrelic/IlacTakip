@@ -214,6 +214,70 @@ public partial class TaskChainPlayerForm : Form
     }
 
     /// <summary>
+    /// Durdur ve Düzenle butonu
+    /// </summary>
+    private void btnStopAndEdit_Click(object? sender, EventArgs e)
+    {
+        var result = ShowMessage(
+            "Çalıştırmayı durdurup düzenleme moduna geçmek istiyor musunuz?\n\n" +
+            "Zincir ve şu anki adım Görev Kaydedici'ye yüklenecek.",
+            "Durdur ve Düzenle",
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Question);
+
+        if (result == DialogResult.Yes)
+        {
+            // Executor'u durdur
+            _executor.Stop();
+            Log("⏹ Çalıştırma durduruldu - Düzenleme moduna geçiliyor...");
+
+            // Görev kaydedici formunu aç ve zinciri yükle
+            OpenRecorderForEditing(_selectedChain!, _executor.CurrentStepIndex);
+        }
+    }
+
+    /// <summary>
+    /// Zinciri Düzenle butonu (çalışmıyorken)
+    /// </summary>
+    private void btnEditChain_Click(object? sender, EventArgs e)
+    {
+        if (_selectedChain == null)
+        {
+            ShowMessage("Lütfen düzenlemek için bir görev zinciri seçin!", "Uyarı",
+                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        OpenRecorderForEditing(_selectedChain, -1);
+    }
+
+    /// <summary>
+    /// Görev kaydediciyi düzenleme modunda aç
+    /// </summary>
+    private void OpenRecorderForEditing(TaskChain chain, int currentStepIndex)
+    {
+        try
+        {
+            var recorderForm = new TaskChainRecorderForm();
+            recorderForm.LoadChainForEditing(chain, currentStepIndex);
+            recorderForm.Show();
+
+            Log($"✏️ Görev zinciri düzenleme için açıldı: {chain.Name}");
+
+            if (currentStepIndex >= 0)
+            {
+                Log($"   Şu anki adım: {currentStepIndex + 1}");
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowMessage($"Görev kaydedici açılırken hata oluştu:\n{ex.Message}",
+                "Hata", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            Log($"❌ HATA: {ex.Message}");
+        }
+    }
+
+    /// <summary>
     /// Log temizle
     /// </summary>
     private void btnClearLog_Click(object? sender, EventArgs e)
@@ -257,8 +321,10 @@ public partial class TaskChainPlayerForm : Form
         btnPlay.Enabled = !isRunning;
         btnPause.Enabled = isRunning;
         btnStop.Enabled = isRunning;
+        btnStopAndEdit.Enabled = isRunning;
         lstChains.Enabled = !isRunning;
         btnRefresh.Enabled = !isRunning;
+        btnEditChain.Enabled = !isRunning && _selectedChain != null;
         grpSpeed.Enabled = !isRunning;
         grpErrorHandling.Enabled = !isRunning;
         grpOptions.Enabled = !isRunning;

@@ -1949,6 +1949,30 @@ namespace MedulaOtomasyon
             }
         }
 
+        private static double ToDoubleOrDefault(object? value, double defaultValue = double.NaN)
+        {
+            if (value == null)
+                return defaultValue;
+
+            try
+            {
+                if (value is double d) return d;
+                if (value is float f) return f;
+                if (value is int i) return i;
+                if (value is long l) return l;
+                if (double.TryParse(value.ToString(), out var parsed))
+                {
+                    return parsed;
+                }
+            }
+            catch
+            {
+                // ignore conversion errors
+            }
+
+            return defaultValue;
+        }
+
         private bool TryClickByCssSelector(RecordedElement element, string? cssSelector)
         {
             if (string.IsNullOrWhiteSpace(cssSelector))
@@ -2166,6 +2190,87 @@ namespace MedulaOtomasyon
                     element.click();
                 }
                 catch { }
+            }
+
+            try
+            {
+                object? ownerDocumentObj = null;
+                try { ownerDocumentObj = element.ownerDocument; }
+                catch { ownerDocumentObj = null; }
+
+                object? windowObj = null;
+                if (ownerDocumentObj != null)
+                {
+                    try { windowObj = ((dynamic)ownerDocumentObj).parentWindow; }
+                    catch { windowObj = null; }
+                }
+                double centerX = 0;
+                double centerY = 0;
+                bool hasRect = false;
+
+                try
+                {
+                    dynamic rect = element.getBoundingClientRect();
+                    if (rect != null)
+                    {
+                        object? leftObj = null, rightObj = null, topObj = null, bottomObj = null;
+                        try { leftObj = rect.left; } catch { }
+                        try { rightObj = rect.right; } catch { }
+                        try { topObj = rect.top; } catch { }
+                        try { bottomObj = rect.bottom; } catch { }
+
+                        var left = ToDoubleOrDefault(leftObj);
+                        var right = ToDoubleOrDefault(rightObj);
+                        var top = ToDoubleOrDefault(topObj);
+                        var bottom = ToDoubleOrDefault(bottomObj);
+
+                        if (!double.IsNaN(left) && !double.IsNaN(right) &&
+                            !double.IsNaN(top) && !double.IsNaN(bottom))
+                        {
+                            centerX = (left + right) / 2.0;
+                            centerY = (top + bottom) / 2.0;
+                            hasRect = true;
+                        }
+                    }
+                }
+                catch
+                {
+                    hasRect = false;
+                }
+
+                if (hasRect)
+                {
+                    double screenLeft = 0;
+                    double screenTop = 0;
+
+                    if (windowObj != null)
+                    {
+                        try
+                        {
+                            var dynamicWindow = (dynamic)windowObj;
+                            screenLeft = ToDoubleOrDefault(dynamicWindow.screenLeft, 0);
+                            screenTop = ToDoubleOrDefault(dynamicWindow.screenTop, 0);
+                        }
+                        catch
+                        {
+                            screenLeft = 0;
+                            screenTop = 0;
+                        }
+                    }
+
+                    int clickX = (int)Math.Round(screenLeft + centerX);
+                    int clickY = (int)Math.Round(screenTop + centerY);
+
+                    if (clickX > 0 && clickY > 0)
+                    {
+                        LogInfo($"Simulating mouse click at ({clickX}, {clickY}) based on bounding rect");
+                        SimulateClick(new System.Windows.Point(clickX, clickY));
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogWarning($"Bounding rect click failed: {ex.Message}");
             }
         }
 

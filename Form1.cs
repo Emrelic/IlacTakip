@@ -19,11 +19,14 @@ public partial class Form1 : Form
         // Ekranın çalışma alanını al
         var workingArea = Screen.PrimaryScreen!.WorkingArea;
 
-        // Formun sağ alt köşe pozisyonunu hesapla
+        // Formun boyutunu ekran yüksekliğine ayarla
+        this.Height = workingArea.Height;
+
+        // Formun sağ üst köşe pozisyonunu hesapla (ekranın sağında tam yükseklikte)
         this.StartPosition = FormStartPosition.Manual;
         this.Location = new Point(
             workingArea.Right - this.Width,
-            workingArea.Bottom - this.Height
+            workingArea.Top
         );
     }
 

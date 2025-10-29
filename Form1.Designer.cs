@@ -42,9 +42,9 @@ partial class Form1
         // btnAGrubu
         //
         btnAGrubu.Font = new Font("Segoe UI", 12F, FontStyle.Bold);
-        btnAGrubu.Location = new Point(50, 50);
+        btnAGrubu.Location = new Point(15, 60);
         btnAGrubu.Name = "btnAGrubu";
-        btnAGrubu.Size = new Size(200, 80);
+        btnAGrubu.Size = new Size(440, 65);
         btnAGrubu.TabIndex = 0;
         btnAGrubu.Text = "A Grubu";
         btnAGrubu.UseVisualStyleBackColor = true;
@@ -53,9 +53,9 @@ partial class Form1
         // btnBGrubu
         //
         btnBGrubu.Font = new Font("Segoe UI", 12F, FontStyle.Bold);
-        btnBGrubu.Location = new Point(300, 50);
+        btnBGrubu.Location = new Point(15, 135);
         btnBGrubu.Name = "btnBGrubu";
-        btnBGrubu.Size = new Size(200, 80);
+        btnBGrubu.Size = new Size(440, 65);
         btnBGrubu.TabIndex = 1;
         btnBGrubu.Text = "B Grubu";
         btnBGrubu.UseVisualStyleBackColor = true;
@@ -64,9 +64,9 @@ partial class Form1
         // btnCGrubu
         //
         btnCGrubu.Font = new Font("Segoe UI", 12F, FontStyle.Bold);
-        btnCGrubu.Location = new Point(550, 50);
+        btnCGrubu.Location = new Point(15, 210);
         btnCGrubu.Name = "btnCGrubu";
-        btnCGrubu.Size = new Size(200, 80);
+        btnCGrubu.Size = new Size(440, 65);
         btnCGrubu.TabIndex = 2;
         btnCGrubu.Text = "C Grubu";
         btnCGrubu.UseVisualStyleBackColor = true;
@@ -74,10 +74,10 @@ partial class Form1
         //
         // btnDebug
         //
-        btnDebug.Font = new Font("Segoe UI", 9F);
-        btnDebug.Location = new Point(650, 150);
+        btnDebug.Font = new Font("Segoe UI", 10F);
+        btnDebug.Location = new Point(340, 15);
         btnDebug.Name = "btnDebug";
-        btnDebug.Size = new Size(100, 30);
+        btnDebug.Size = new Size(115, 35);
         btnDebug.TabIndex = 5;
         btnDebug.Text = "Debug";
         btnDebug.UseVisualStyleBackColor = true;
@@ -85,10 +85,10 @@ partial class Form1
         //
         // btnTopmost
         //
-        btnTopmost.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
-        btnTopmost.Location = new Point(530, 150);
+        btnTopmost.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
+        btnTopmost.Location = new Point(15, 15);
         btnTopmost.Name = "btnTopmost";
-        btnTopmost.Size = new Size(110, 30);
+        btnTopmost.Size = new Size(150, 35);
         btnTopmost.TabIndex = 8;
         btnTopmost.Text = "📌 En Üstte Tut";
         btnTopmost.UseVisualStyleBackColor = true;
@@ -96,10 +96,10 @@ partial class Form1
         //
         // btnTaskChainRecorder
         //
-        btnTaskChainRecorder.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
-        btnTaskChainRecorder.Location = new Point(300, 550);
+        btnTaskChainRecorder.Font = new Font("Segoe UI", 11F, FontStyle.Bold);
+        btnTaskChainRecorder.Location = new Point(15, 295);
         btnTaskChainRecorder.Name = "btnTaskChainRecorder";
-        btnTaskChainRecorder.Size = new Size(200, 40);
+        btnTaskChainRecorder.Size = new Size(440, 55);
         btnTaskChainRecorder.TabIndex = 6;
         btnTaskChainRecorder.Text = "📝 Görev Zinciri Kaydet";
         btnTaskChainRecorder.UseVisualStyleBackColor = true;
@@ -107,10 +107,10 @@ partial class Form1
         //
         // btnTaskChainPlayer
         //
-        btnTaskChainPlayer.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
-        btnTaskChainPlayer.Location = new Point(510, 550);
+        btnTaskChainPlayer.Font = new Font("Segoe UI", 11F, FontStyle.Bold);
+        btnTaskChainPlayer.Location = new Point(15, 360);
         btnTaskChainPlayer.Name = "btnTaskChainPlayer";
-        btnTaskChainPlayer.Size = new Size(200, 40);
+        btnTaskChainPlayer.Size = new Size(440, 55);
         btnTaskChainPlayer.TabIndex = 7;
         btnTaskChainPlayer.Text = "▶ Görev Zinciri Oynat";
         btnTaskChainPlayer.UseVisualStyleBackColor = true;
@@ -120,28 +120,28 @@ partial class Form1
         //
         lblStatus.AutoSize = true;
         lblStatus.Font = new Font("Segoe UI", 10F);
-        lblStatus.Location = new Point(50, 150);
+        lblStatus.Location = new Point(15, 430);
         lblStatus.Name = "lblStatus";
-        lblStatus.Size = new Size(90, 19);
+        lblStatus.Size = new Size(100, 21);
         lblStatus.TabIndex = 3;
         lblStatus.Text = "Durum: Hazır";
         //
         // txtLog
         //
         txtLog.Font = new Font("Consolas", 9F);
-        txtLog.Location = new Point(50, 180);
+        txtLog.Location = new Point(15, 460);
         txtLog.Multiline = true;
         txtLog.Name = "txtLog";
         txtLog.ReadOnly = true;
         txtLog.ScrollBars = ScrollBars.Vertical;
-        txtLog.Size = new Size(700, 350);
+        txtLog.Size = new Size(440, 590);
         txtLog.TabIndex = 4;
         //
         // Form1
         //
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
-        ClientSize = new Size(800, 610);
+        ClientSize = new Size(470, 1060);
         Controls.Add(btnTopmost);
         Controls.Add(btnTaskChainPlayer);
         Controls.Add(btnTaskChainRecorder);
@@ -151,8 +151,10 @@ partial class Form1
         Controls.Add(btnCGrubu);
         Controls.Add(btnBGrubu);
         Controls.Add(btnAGrubu);
+        FormBorderStyle = FormBorderStyle.SizableToolWindow;
+        MaximizeBox = false;
         Name = "Form1";
-        Text = "Medula Reçete Otomasyonu";
+        Text = "Medula Otomasyon";
         ResumeLayout(false);
         PerformLayout();
     }

@@ -4,11 +4,17 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Automation;
+using System.Runtime.InteropServices;
+using Microsoft.VisualBasic;
 
 namespace MedulaOtomasyon;
 
 public partial class TaskChainRecorderForm : Form
 {
+    private readonly Color _topmostActiveColor = Color.FromArgb(76, 175, 80);
+    private readonly Color _topmostInactiveColor = Color.FromArgb(189, 189, 189);
+    private bool _isDocking;
+
     private TaskChain _currentChain;
     private TaskChainDatabase _database;
     private int _currentStepNumber = 1;
@@ -16,6 +22,8 @@ public partial class TaskChainRecorderForm : Form
     private List<ElementLocatorStrategy> _availableStrategies = new();
     private ElementLocatorStrategy? _selectedStrategy = null;
     private CancellationTokenSource? _testCancellationTokenSource = null;
+    private bool _isEditingMode = false;
+    private TaskStep? _stepBeingEdited = null;
 
     // Smart Element Recorder için field'lar
     private SmartElementRecorder? _smartRecorder = null;
@@ -29,6 +37,7 @@ public partial class TaskChainRecorderForm : Form
     public TaskChainRecorderForm()
     {
         InitializeComponent();
+        this.TopMost = true; // Her zaman en üstte tut
         _database = new TaskChainDatabase();
         _currentChain = new TaskChain
         {
@@ -45,21 +54,57 @@ public partial class TaskChainRecorderForm : Form
         UpdateStepNumberLabel();
         LogMessage("Görev kaydedici başlatıldı. İlk adım için hedef seçin.");
 
-        // Formu sağ alt köşede aç
-        this.Load += TaskChainRecorderForm_Load;
+        Load += (_, _) => DockWindowToRightEdge();
+        Shown += TaskChainRecorderForm_Shown;
+        LocationChanged += TaskChainRecorderForm_LocationChanged;
+
+        // Başlangıçta görev görüntüleyiciyi güncelle
+        UpdateTaskChainViewer();
     }
 
-    private void TaskChainRecorderForm_Load(object? sender, EventArgs e)
+    /// <summary>
+    /// Mevcut bir zinciri düzenleme için yükle (Oynatıcıdan çağrılır)
+    /// </summary>
+    public void LoadChainForEditing(TaskChain chain, int highlightStepIndex = -1)
     {
-        // Ekranın çalışma alanını al
-        var workingArea = Screen.PrimaryScreen!.WorkingArea;
+        if (chain == null)
+        {
+            LogMessage("❌ HATA: Yüklenecek zincir null!");
+            return;
+        }
 
-        // Formun sağ alt köşe pozisyonunu hesapla
-        this.StartPosition = FormStartPosition.Manual;
-        this.Location = new Point(
-            workingArea.Right - this.Width,
-            workingArea.Bottom - this.Height
-        );
+        LogMessage($"📂 Mevcut zincir yükleniyor: {chain.Name}");
+
+        // Zinciri yükle
+        _currentChain = chain;
+        txtChainName.Text = chain.Name;
+
+        // Sonraki adım numarasını ayarla
+        _currentStepNumber = chain.Steps.Count > 0 ? chain.Steps.Max(s => s.StepNumber) + 1 : 1;
+        UpdateStepNumberLabel();
+
+        // Görev görüntüleyiciyi güncelle
+        UpdateTaskChainViewer();
+
+        // Eğer belirli bir adım vurgulanacaksa
+        if (highlightStepIndex >= 0 && highlightStepIndex < chain.Steps.Count)
+        {
+            var step = chain.Steps[highlightStepIndex];
+            LogMessage($"⚠️ Dikkat: Adım {step.StepNumber} çalışırken hata verdi veya durduruldu.");
+            LogMessage($"   Bu adımı düzenlemek için 'Düzenle' butonunu kullanın.");
+
+            // Form başlığını değiştir
+            lblTitle.Text = $"Görev Zinciri Düzenleyici - {chain.Name}";
+            lblTitle.ForeColor = Color.FromArgb(255, 140, 0);
+        }
+        else
+        {
+            lblTitle.Text = $"Görev Zinciri Düzenleyici - {chain.Name}";
+        }
+
+        LogMessage($"✅ Zincir yüklendi: {chain.Steps.Count} adım");
+        LogMessage("   Yeni adım ekleyebilir veya mevcut adımları düzenleyebilirsiniz.");
+        LogMessage("   Değişiklikleri kaydetmek için 'Zinciri Kaydet' butonuna basın.");
     }
 
     private void UpdateStepNumberLabel()
@@ -74,24 +119,111 @@ public partial class TaskChainRecorderForm : Form
         txtLog.ScrollToCaret();
     }
 
+    private void TaskChainRecorderForm_Shown(object? sender, EventArgs e)
+    {
+        BeginInvoke(new Action(() =>
+        {
+            DockWindowToRightEdge();
+            PushOtherWindowsToLeft();
+
+            // Temel Bilgiler sekmesini aktif hale getir
+            if (tabControl.SelectedTab != tabBasicInfo)
+            {
+                tabControl.SelectedTab = tabBasicInfo;
+                LogMessage("Temel Bilgiler sekmesi aktif hale getirildi.");
+            }
+        }));
+    }
+
+    private void TaskChainRecorderForm_LocationChanged(object? sender, EventArgs e)
+    {
+        if (!IsHandleCreated || _isDocking)
+            return;
+
+        _isDocking = true;
+        DockWindowToRightEdge();
+        PushOtherWindowsToLeft();
+        _isDocking = false;
+    }
+
+    private void DockWindowToRightEdge()
+    {
+        var screen = Screen.PrimaryScreen!;
+        var work = screen.WorkingArea;
+        int desiredWidth = 480; // Ekranın 1/4'ü (1920 / 4 = 480)
+
+        StartPosition = FormStartPosition.Manual;
+
+        // Form yüksekliği ekran yüksekliğini geçmemeli
+        int formHeight = Math.Min(1060, work.Height);
+        Size = new Size(desiredWidth, formHeight);
+
+        // Formun sağ kenara yapışması ve ekran sınırları içinde kalması
+        Location = new Point(work.Right - desiredWidth, work.Top);
+    }
+
+    private void PushOtherWindowsToLeft()
+    {
+        var work = Screen.PrimaryScreen!.WorkingArea;
+        int leftWidth = Math.Max(0, work.Width - Width);
+
+        if (leftWidth <= 0)
+            return;
+
+        IntPtr selfHandle = Handle;
+        uint currentPid = (uint)Process.GetCurrentProcess().Id;
+        var primaryBounds = new Rectangle(work.Left, work.Top, work.Width, work.Height);
+
+        EnumWindows((hWnd, _) =>
+        {
+            if (hWnd == selfHandle)
+                return true;
+
+            if (!IsWindowVisible(hWnd) || IsIconic(hWnd))
+                return true;
+
+            GetWindowThreadProcessId(hWnd, out uint pid);
+            if (pid == currentPid)
+                return true;
+
+            if (!GetWindowRect(hWnd, out RECT rect))
+                return true;
+
+            var windowRect = Rectangle.FromLTRB(rect.Left, rect.Top, rect.Right, rect.Bottom);
+            if (!windowRect.IntersectsWith(primaryBounds))
+                return true;
+
+            if (rect.Left >= work.Left && rect.Right <= work.Left + leftWidth)
+                return true;
+
+            SetWindowPos(
+                hWnd,
+                IntPtr.Zero,
+                work.Left,
+                work.Top,
+                leftWidth,
+                work.Height,
+                SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+
+            return true;
+        }, IntPtr.Zero);
+    }
+
     private void cmbStepType_SelectedIndexChanged(object? sender, EventArgs e)
     {
-        // Tip seçimine göre ilgili GroupBox'ları göster/gizle
-        grpTargetSelection.Visible = false;
-        grpUIElementAction.Visible = false;
-
+        // Tip seçimine göre ilgili TabPage'leri aktif et
         switch (cmbStepType.SelectedIndex)
         {
             case 0: // Tip 1: Hedef Program/Pencere Seçimi
-                grpTargetSelection.Visible = true;
                 _currentStep.StepType = StepType.TargetSelection;
                 LogMessage("Tip 1 seçildi: Hedef Program/Pencere Seçimi");
+                tabControl.SelectedTab = tabTargetSelection;
                 break;
 
             case 1: // Tip 2: UI Element Tıklama/Tuşlama
-                grpUIElementAction.Visible = true;
                 _currentStep.StepType = StepType.UIElementAction;
                 LogMessage("Tip 2 seçildi: UI Element Tıklama/Tuşlama");
+                tabControl.SelectedTab = tabUIElement;
                 break;
 
             case 2: // Tip 3: Sayfa Durum Kontrolü (Koşullu Dallanma)
@@ -222,7 +354,7 @@ public partial class TaskChainRecorderForm : Form
                 ShowMessage("Lütfen önce bir hedef seçin!", "Uyarı", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
-            _currentStep.Description = $"Adım {_currentStepNumber}: Hedef - {txtProgramPath.Text}";
+            _currentStep.Description = $"Adım {_currentStep.StepNumber}: Hedef - {txtProgramPath.Text}";
         }
         else if (_currentStep.StepType == StepType.UIElementAction)
         {
@@ -250,8 +382,8 @@ public partial class TaskChainRecorderForm : Form
                     return;
                 }
 
-                // Strateji seçilmeli
-                if (_selectedStrategy == null)
+                // Strateji seçilmeli (Düzenleme modundaysa ve strateji mevcutsa kontrol etme)
+                if (_selectedStrategy == null && !_isEditingMode)
                 {
                     ShowMessage("Lütfen bir element bulma stratejisi seçin!\n\n" +
                                   "1. Element Seç butonuna tıklayın\n" +
@@ -262,7 +394,7 @@ public partial class TaskChainRecorderForm : Form
                 }
 
                 // Başarısız strateji uyarısı
-                if (!_selectedStrategy.IsSuccessful)
+                if (_selectedStrategy != null && !_selectedStrategy.IsSuccessful)
                 {
                     var result = ShowMessage(
                         $"Seçtiğiniz strateji test sırasında BAŞARISIZ oldu!\n\n" +
@@ -279,7 +411,10 @@ public partial class TaskChainRecorderForm : Form
                     }
                 }
 
-                _currentStep.SelectedStrategy = _selectedStrategy;
+                if (_selectedStrategy != null)
+                {
+                    _currentStep.SelectedStrategy = _selectedStrategy;
+                }
             }
 
             // Action tipini kaydet
@@ -294,7 +429,7 @@ public partial class TaskChainRecorderForm : Form
                 _ => ActionType.None
             };
 
-            // Klavye tuşları veya metin
+            // Action'a göre özel parametreleri kaydet
             if (_currentStep.Action == ActionType.KeyPress)
             {
                 _currentStep.KeysToPress = txtKeysToPress.Text;
@@ -303,16 +438,51 @@ public partial class TaskChainRecorderForm : Form
             {
                 _currentStep.TextToType = txtKeysToPress.Text;
             }
+            else if (_currentStep.Action == ActionType.MouseWheel)
+            {
+                // Scroll miktarını delta değerine çevir (1 adım = 120 delta)
+                _currentStep.MouseWheelDelta = (int)numScrollAmount.Value * 120;
+            }
+            else if (_currentStep.Action == ActionType.DoubleClick)
+            {
+                // Double click delay değerini kaydet (şu anda kullanılmıyor ama gelecekte eklenebilir)
+                _currentStep.WaitMilliseconds = (int)numDoubleClickDelay.Value;
+            }
 
             var strategyName = _currentStep.SelectedStrategy?.Name ?? "NoStrategy";
-            _currentStep.Description = $"Adım {_currentStepNumber}: {_currentStep.Action} - {_currentStep.UIElement.Name ?? _currentStep.UIElement.ClassName} [{strategyName}]";
+            _currentStep.Description = $"Adım {_currentStep.StepNumber}: {_currentStep.Action} - {_currentStep.UIElement.Name ?? _currentStep.UIElement.ClassName} [{strategyName}]";
         }
 
-        _currentChain.Steps.Add(_currentStep);
-        LogMessage($"✓ Adım {_currentStepNumber} kaydedildi: {_currentStep.Description}");
+        // Düzenleme modunda mı?
+        if (_isEditingMode && _stepBeingEdited != null)
+        {
+            // Mevcut adımı güncelle (zincirden çıkarmadan)
+            LogMessage($"✓ Adım {_currentStep.StepNumber} güncellendi: {_currentStep.Description}");
 
-        ShowMessage($"Adım {_currentStepNumber} başarıyla kaydedildi!", "Başarılı",
-            MessageBoxButtons.OK, MessageBoxIcon.Information);
+            // Düzenleme modundan çık
+            CancelEditMode();
+
+            // Görev zinciri görüntüleyiciyi güncelle
+            UpdateTaskChainViewer();
+
+            ShowMessage($"Adım {_currentStep.StepNumber} başarıyla güncellendi!", "Başarılı",
+                MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+        else
+        {
+            // Yeni adım ekleme modu
+            _currentChain.Steps.Add(_currentStep);
+            LogMessage($"✓ Adım {_currentStepNumber} kaydedildi: {_currentStep.Description}");
+
+            // Görev zinciri görüntüleyiciyi güncelle
+            UpdateTaskChainViewer();
+
+            ShowMessage($"Adım {_currentStepNumber} başarıyla kaydedildi!", "Başarılı",
+                MessageBoxButtons.OK, MessageBoxIcon.Information);
+
+            // Otomatik olarak bir sonraki adıma geç
+            btnNextStep_Click(null, EventArgs.Empty);
+        }
     }
 
     private void btnTestStep_Click(object? sender, EventArgs e)
@@ -328,13 +498,28 @@ public partial class TaskChainRecorderForm : Form
 
         try
         {
-            if (_currentStep.StepType == StepType.TargetSelection)
+            // Akıllı strateji veya klasik strateji seçilmişse UI Element Action testi yap
+            var hasStrategy = _selectedStrategy != null || _selectedSmartStrategy != null;
+            var hasUIElement = _currentStep.UIElement != null ||
+                              (_selectedSmartStrategy?.RecordedElement != null);
+
+            if (hasStrategy && hasUIElement)
+            {
+                // Strateji seçiliyse ve UI element bilgisi varsa, UI Element Action testi yap
+                TestUIElementAction();
+            }
+            else if (_currentStep.StepType == StepType.TargetSelection)
             {
                 TestTargetSelection();
             }
             else if (_currentStep.StepType == StepType.UIElementAction)
             {
                 TestUIElementAction();
+            }
+            else
+            {
+                ShowMessage("Test etmek için önce bir hedef veya strateji seçin!",
+                    "Uyarı", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
         }
         catch (Exception ex)
@@ -654,9 +839,43 @@ public partial class TaskChainRecorderForm : Form
         txtProgramPath.Clear();
         txtElementProperties.Clear();
         txtKeysToPress.Clear();
-        cmbStepType.SelectedIndex = 0; // Varsayılan: Tip 1
+        txtSmartElementProperties.Clear();
+
+        // Stratejileri ve seçimleri temizle
+        _selectedStrategy = null;
+        _selectedSmartStrategy = null;
+        _availableStrategies.Clear();
+        _smartStrategies.Clear();
+        lstStrategies.Items.Clear();
+        lstSmartStrategies.Items.Clear();
+
+        if (lblTestResult != null)
+        {
+            lblTestResult.Text = "";
+        }
+        if (lblSmartTestResult != null)
+        {
+            lblSmartTestResult.Text = "";
+        }
+        if (lblSelectedStrategy != null)
+        {
+            lblSelectedStrategy.Text = "Seçili strateji: Yok";
+        }
+        if (lblSmartSelectedStrategy != null)
+        {
+            lblSmartSelectedStrategy.Text = "Seçili strateji: Yok";
+        }
+
+        // Temel Bilgiler sekmesine dön
+        tabControl.SelectedTab = tabBasicInfo;
+
+        // Adım tipini sıfırla (event tetiklemeden)
+        cmbStepType.SelectedIndexChanged -= cmbStepType_SelectedIndexChanged;
+        cmbStepType.SelectedIndex = -1; // Hiçbiri seçili değil
+        cmbStepType.SelectedIndexChanged += cmbStepType_SelectedIndexChanged;
 
         LogMessage($"\n--- Yeni Adım: {_currentStepNumber} ---");
+        LogMessage("Lütfen adım tipini seçin ve gerekli bilgileri doldurun.");
     }
 
     private void btnSaveChain_Click(object? sender, EventArgs e)
@@ -848,7 +1067,6 @@ public partial class TaskChainRecorderForm : Form
         lblSelectedStrategy.Text = "Seçili Strateji: -";
         lblSelectedStrategy.ForeColor = Color.Black;
         lblTestResult.Text = "";
-        grpStrategyTest.Visible = false;
 
         LogMessage("\n=== YENİ ELEMENT SEÇİMİ ===");
         LogMessage("Element seçimi başlatılıyor...");
@@ -1038,8 +1256,8 @@ public partial class TaskChainRecorderForm : Form
             lstStrategies.Items.Add($"⚪ {strategy.Name} - {strategy.Description}");
         }
 
-        // Strateji panelini göster
-        grpStrategyTest.Visible = true;
+        // Stratejiler sekmesine geç
+        tabControl.SelectedTab = tabStrategies;
 
         LogMessage($"✓ {_availableStrategies.Count} strateji oluşturuldu");
         LogMessage("Şimdi 'Tüm Stratejileri Test Et' butonuna tıklayın.");
@@ -1055,23 +1273,41 @@ public partial class TaskChainRecorderForm : Form
 
     private void cmbActionType_SelectedIndexChanged(object? sender, EventArgs e)
     {
-        // Klavye Tuşları veya Metin Yaz seçildiğinde input alanını göster
-        bool showKeysInput = cmbActionType.SelectedIndex == 4 || cmbActionType.SelectedIndex == 5;
-        lblKeysToPress.Visible = showKeysInput;
-        txtKeysToPress.Visible = showKeysInput;
+        // Tüm dinamik kontrolleri gizle
+        lblKeysToPress.Visible = false;
+        txtKeysToPress.Visible = false;
+        lblScrollAmount.Visible = false;
+        numScrollAmount.Visible = false;
+        lblDoubleClickDelay.Visible = false;
+        numDoubleClickDelay.Visible = false;
 
-        if (showKeysInput)
+        // Seçime göre ilgili kontrolleri göster
+        // 0: Sol Tık, 1: Sağ Tık, 2: Çift Tık, 3: Mouse Tekerlek, 4: Klavye Tuşları, 5: Metin Yaz
+        switch (cmbActionType.SelectedIndex)
         {
-            if (cmbActionType.SelectedIndex == 4)
-            {
+            case 2: // Çift Tık
+                lblDoubleClickDelay.Visible = true;
+                numDoubleClickDelay.Visible = true;
+                break;
+
+            case 3: // Mouse Tekerlek
+                lblScrollAmount.Visible = true;
+                numScrollAmount.Visible = true;
+                break;
+
+            case 4: // Klavye Tuşları
+                lblKeysToPress.Visible = true;
+                txtKeysToPress.Visible = true;
                 lblKeysToPress.Text = "Klavye Tuşları:";
-                txtKeysToPress.PlaceholderText = "Örn: {ENTER}, {TAB}, {F5}...";
-            }
-            else
-            {
+                txtKeysToPress.PlaceholderText = "Örn: {ENTER}, {TAB}, ^c (Ctrl+C), %(F4) (Alt+F4)...";
+                break;
+
+            case 5: // Metin Yaz
+                lblKeysToPress.Visible = true;
+                txtKeysToPress.Visible = true;
                 lblKeysToPress.Text = "Yazılacak Metin:";
                 txtKeysToPress.PlaceholderText = "Yazılacak metni girin...";
-            }
+                break;
         }
     }
 
@@ -1195,6 +1431,104 @@ public partial class TaskChainRecorderForm : Form
         }
     }
 
+    private async void btnTestSelectedStrategy_Click(object? sender, EventArgs e)
+    {
+        var strategy = _selectedStrategy ?? _selectedSmartStrategy;
+
+        if (strategy == null)
+        {
+            ShowMessage("Lütfen önce bir strateji seçin!", "Uyarı", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        if (_currentStep.UIElement == null)
+        {
+            ShowMessage("UI Element bilgisi bulunamadı!", "Uyarı", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        LogMessage($"\n=== SEÇİLİ STRATEJİ TEST EDİLİYOR: {strategy.Name} ===");
+
+        // Debug log oturumunu başlat
+        DebugLogger.StartNewSession();
+        var debugLogPath = DebugLogger.GetLogFilePath();
+        LogMessage($"📝 Debug log dosyası: {debugLogPath}");
+        DebugLogger.LogSeparator('=', 80);
+        DebugLogger.Log($"SEÇİLİ STRATEJİ TEST EDİLİYOR: {strategy.Name}");
+        DebugLogger.LogSeparator('=', 80);
+
+        lblTestResult.Text = "⏳ Test ediliyor...";
+        lblTestResult.ForeColor = Color.Blue;
+
+        try
+        {
+            // DEBUG: Window bilgisini logla
+            if (_currentStep.UIElement != null)
+            {
+                LogMessage($"  Window: {_currentStep.UIElement.WindowTitle ?? "N/A"}");
+                LogMessage($"  ProcessId: {_currentStep.UIElement.WindowProcessId?.ToString() ?? "N/A"}");
+            }
+
+            // Stratejiyi test et
+            var testedStrategy = await ElementLocatorTester.TestStrategy(strategy, _currentStep.UIElement);
+
+            // Sonucu güncelle
+            if (strategy == _selectedStrategy)
+            {
+                int index = _availableStrategies.IndexOf(_selectedStrategy);
+                if (index >= 0)
+                {
+                    _availableStrategies[index] = testedStrategy;
+                    _selectedStrategy = testedStrategy;
+                }
+            }
+            else if (strategy == _selectedSmartStrategy)
+            {
+                int index = _smartStrategies.IndexOf(_selectedSmartStrategy);
+                if (index >= 0)
+                {
+                    _smartStrategies[index] = testedStrategy;
+                    _selectedSmartStrategy = testedStrategy;
+                }
+            }
+
+            // Sonucu göster
+            string icon = testedStrategy.IsSuccessful ? "✅" : "❌";
+            string result = testedStrategy.IsSuccessful
+                ? $"Başarılı ({testedStrategy.TestDurationMs}ms)"
+                : $"Başarısız: {testedStrategy.ErrorMessage}";
+
+            if (testedStrategy.IsSuccessful)
+            {
+                LogMessage($"  ✅ Başarılı! ({testedStrategy.TestDurationMs}ms)");
+                lblTestResult.Text = $"✅ Test Başarılı - {testedStrategy.TestDurationMs}ms";
+                lblTestResult.ForeColor = Color.Green;
+            }
+            else
+            {
+                LogMessage($"  ❌ Başarısız: {testedStrategy.ErrorMessage}");
+                lblTestResult.Text = $"❌ Test Başarısız - {testedStrategy.ErrorMessage}";
+                lblTestResult.ForeColor = Color.Red;
+            }
+
+            // Log dosyası özeti
+            DebugLogger.LogSeparator('=', 80);
+            DebugLogger.Log($"TEST SONUCU: {(testedStrategy.IsSuccessful ? "BAŞARILI" : "BAŞARISIZ")}");
+            DebugLogger.LogSeparator('=', 80);
+            var logPath = DebugLogger.GetLogFilePath();
+            LogMessage($"📁 Detaylı log kaydedildi: {logPath}");
+        }
+        catch (Exception ex)
+        {
+            LogMessage($"\n❌ Test sırasında hata: {ex.Message}");
+            lblTestResult.Text = $"❌ Hata: {ex.Message}";
+            lblTestResult.ForeColor = Color.Red;
+
+            DebugLogger.Log($"HATA: {ex.Message}");
+            DebugLogger.Log($"Stack Trace: {ex.StackTrace}");
+        }
+    }
+
     private void lstStrategies_SelectedIndexChanged(object? sender, EventArgs e)
     {
         if (lstStrategies.SelectedIndex >= 0 && lstStrategies.SelectedIndex < _availableStrategies.Count)
@@ -1202,6 +1536,13 @@ public partial class TaskChainRecorderForm : Form
             _selectedStrategy = _availableStrategies[lstStrategies.SelectedIndex];
             lblSelectedStrategy.Text = $"Seçili Strateji: {_selectedStrategy.Name}";
             lblSelectedStrategy.ForeColor = _selectedStrategy.IsSuccessful ? Color.Green : Color.Red;
+
+            // Element bilgisini akıllı kayıttan doldur
+            if (_currentStep.UIElement == null && _selectedStrategy.RecordedElement != null)
+            {
+                _currentStep.UIElement = SmartElementRecorder.ConvertToUIElementInfo(_selectedStrategy.RecordedElement);
+                LogMessage("ℹ️ UIElement bilgisi akıllı kayıttan dolduruldu.");
+            }
 
             LogMessage($"\n✓ Strateji seçildi: {_selectedStrategy.Name}");
             if (_selectedStrategy.IsSuccessful)
@@ -1220,21 +1561,7 @@ public partial class TaskChainRecorderForm : Form
         Close();
     }
 
-    private void btnTopmost_Click(object? sender, EventArgs e)
-    {
-        this.TopMost = !this.TopMost;
-
-        if (this.TopMost)
-        {
-            btnTopmost.Text = "📌 En Üstte";
-            btnTopmost.BackColor = Color.LightGreen;
-        }
-        else
-        {
-            btnTopmost.Text = "📌 En Üstte Tut";
-            btnTopmost.BackColor = SystemColors.Control;
-        }
-    }
+    // btnTopmost kaldırıldı - form her zaman topmost
 
     /// <summary>
     /// MessageBox göster - Form topmost ise MessageBox da topmost olur
@@ -1243,6 +1570,43 @@ public partial class TaskChainRecorderForm : Form
     {
         return MessageBox.Show(this, text, caption, buttons, icon);
     }
+
+    #region Native helpers
+
+    private const uint SWP_NOZORDER = 0x0004;
+    private const uint SWP_NOACTIVATE = 0x0010;
+    private const uint SWP_SHOWWINDOW = 0x0040;
+
+    private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsWindowVisible(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsIconic(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+    [DllImport("user32.dll")]
+    private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+    [DllImport("user32.dll")]
+    private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RECT
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    #endregion
 
     #region Smart Element Recorder Methods
 
@@ -1610,6 +1974,147 @@ public partial class TaskChainRecorderForm : Form
     }
 
     /// <summary>
+    /// Seçili akıllı stratejiyi test et butonuna tıklanınca
+    /// </summary>
+    private async void btnTestSelectedSmartStrategy_Click(object? sender, EventArgs e)
+    {
+        if (_selectedSmartStrategy == null)
+        {
+            ShowMessage("Lütfen önce bir strateji seçin!", "Uyarı", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        if (_lastRecordedElement == null)
+        {
+            ShowMessage("Element bilgisi bulunamadı! Önce 'Akıllı Seç' ile element seçin.",
+                "Uyarı", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        LogMessage($"\n=== SEÇİLİ AKILLI STRATEJİ TEST EDİLİYOR: {_selectedSmartStrategy.Name} ===");
+
+        lblSmartTestResult.Text = "⏳ Test ediliyor...";
+        lblSmartTestResult.ForeColor = Color.Blue;
+
+        try
+        {
+            var stopwatch = Stopwatch.StartNew();
+            var playwrightSuccess = false;
+            var uiaSuccess = false;
+            var errors = new List<string>();
+
+            // 1. Playwright ile test et (statik sayfa)
+            if (File.Exists(_medulaHtmlPath))
+            {
+                try
+                {
+                    LogMessage("  📄 Playwright ile statik sayfa testi yapılıyor...");
+                    playwrightSuccess = await PlaywrightRowAnalyzer.TestStrategyAsync(_selectedSmartStrategy, _medulaHtmlPath);
+                    if (playwrightSuccess)
+                    {
+                        LogMessage("  ✅ Playwright testi başarılı (statik sayfa)");
+                    }
+                    else
+                    {
+                        errors.Add("Playwright testi başarısız");
+                        LogMessage("  ⚠️ Playwright testi başarısız");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    errors.Add($"Playwright hatası: {ex.Message}");
+                    LogMessage($"  ⚠️ Playwright hatası: {ex.Message}");
+                }
+            }
+            else
+            {
+                errors.Add("Playwright kaynağı bulunamadı");
+                LogMessage($"  ⚠️ Playwright kaynağı bulunamadı: {_medulaHtmlPath}");
+            }
+
+            // 2. UI Automation ile test et (canlı UI)
+            if (_smartRecorder != null)
+            {
+                try
+                {
+                    LogMessage("  🖥️ UI Automation ile canlı UI testi yapılıyor...");
+                    uiaSuccess = _smartRecorder.ExecuteLocatorStrategy(_selectedSmartStrategy);
+                    if (uiaSuccess)
+                    {
+                        LogMessage("  ✅ UI Automation testi başarılı");
+                    }
+                    else
+                    {
+                        errors.Add("UI Automation testi başarısız");
+                        LogMessage("  ❌ UI Automation testi başarısız");
+                        if (playwrightSuccess)
+                        {
+                            LogMessage("  ⚠️ Not: Playwright selector statik sayfada çalıştı ancak canlı UI bulunamadı.");
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    errors.Add($"UI Automation hatası: {ex.Message}");
+                    LogMessage($"  ❌ UI Automation hatası: {ex.Message}");
+                }
+            }
+
+            stopwatch.Stop();
+
+            // Test sonucunu değerlendir
+            var success = playwrightSuccess || uiaSuccess;
+
+            // Stratejiyi güncelle
+            _selectedSmartStrategy.IsSuccessful = success;
+            _selectedSmartStrategy.TestDurationMs = (int)stopwatch.ElapsedMilliseconds;
+
+            if (!success)
+            {
+                _selectedSmartStrategy.ErrorMessage = string.Join("; ", errors);
+            }
+
+            // Sonucu göster
+            if (success)
+            {
+                LogMessage($"  ✅ Test başarılı! ({stopwatch.ElapsedMilliseconds}ms)");
+                lblSmartTestResult.Text = $"✅ Test Başarılı - {stopwatch.ElapsedMilliseconds}ms";
+                lblSmartTestResult.ForeColor = Color.Green;
+
+                // Strateji listesini güncelle
+                var index = lstSmartStrategies.SelectedIndex;
+                if (index >= 0)
+                {
+                    lstSmartStrategies.Items[index] = $"[{index + 1}] {_selectedSmartStrategy.Name}: {_selectedSmartStrategy.Description} ✅";
+                    lblSmartSelectedStrategy.Text = $"Seçili: {_selectedSmartStrategy.Name} ✅ BAŞARILI";
+                    lblSmartSelectedStrategy.ForeColor = Color.Green;
+                }
+            }
+            else
+            {
+                LogMessage($"  ❌ Test başarısız: {string.Join("; ", errors)}");
+                lblSmartTestResult.Text = $"❌ Test Başarısız - {string.Join("; ", errors)}";
+                lblSmartTestResult.ForeColor = Color.Red;
+
+                // Strateji listesini güncelle
+                var index = lstSmartStrategies.SelectedIndex;
+                if (index >= 0)
+                {
+                    lstSmartStrategies.Items[index] = $"[{index + 1}] {_selectedSmartStrategy.Name}: {_selectedSmartStrategy.Description} ❌";
+                    lblSmartSelectedStrategy.Text = $"Seçili: {_selectedSmartStrategy.Name} ❌ BAŞARISIZ";
+                    lblSmartSelectedStrategy.ForeColor = Color.Red;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            LogMessage($"\n❌ Test sırasında hata: {ex.Message}");
+            lblSmartTestResult.Text = $"❌ Hata: {ex.Message}";
+            lblSmartTestResult.ForeColor = Color.Red;
+        }
+    }
+
+    /// <summary>
     /// Akıllı stratejileri test et butonuna tıklanınca
     /// </summary>
     private async void btnTestSmartStrategies_Click(object? sender, EventArgs e)
@@ -1800,11 +2305,22 @@ public partial class TaskChainRecorderForm : Form
             _selectedSmartStrategy = null;
             lblSmartSelectedStrategy.Text = "Seçili: -";
             lblSmartSelectedStrategy.ForeColor = Color.Blue;
+            btnTestSelectedSmartStrategy.Enabled = false;
             return;
         }
 
         var strategy = _smartStrategies[lstSmartStrategies.SelectedIndex];
         _selectedSmartStrategy = strategy;
+
+        // Seçili strateji test butonunu aktif hale getir
+        btnTestSelectedSmartStrategy.Enabled = true;
+
+        // Element bilgisini akıllı kayıttan doldur
+        if (_currentStep.UIElement == null && strategy.RecordedElement != null)
+        {
+            _currentStep.UIElement = SmartElementRecorder.ConvertToUIElementInfo(strategy.RecordedElement);
+            LogMessage("ℹ️ UIElement bilgisi akıllı kayıttan dolduruldu.");
+        }
 
         var statusText = strategy.IsSuccessful ? "✅ BAŞARILI" : "❌ BAŞARISIZ";
         lblSmartSelectedStrategy.Text = $"Seçili: {strategy.Name} {statusText}";
@@ -1817,6 +2333,622 @@ public partial class TaskChainRecorderForm : Form
         if (!strategy.IsSuccessful && !string.IsNullOrEmpty(strategy.ErrorMessage))
         {
             LogMessage($"   Hata: {strategy.ErrorMessage}");
+        }
+    }
+
+    #endregion
+
+    #region Task Chain Viewer Methods
+
+    /// <summary>
+    /// Sağ panelde görev zinciri adımlarını günceller
+    /// S1, G1, S2, G2, S3, G3... formatında
+    /// </summary>
+    private void UpdateTaskChainViewer()
+    {
+        var sb = new System.Text.StringBuilder();
+
+        // Başlık
+        sb.AppendLine("═══════════════════════════════════════════════════════════════════");
+        sb.AppendLine($"  Görev Zinciri: {txtChainName.Text}");
+        sb.AppendLine($"  Toplam Adım: {_currentChain.Steps.Count}");
+        sb.AppendLine("═══════════════════════════════════════════════════════════════════");
+        sb.AppendLine();
+
+        if (_currentChain.Steps.Count == 0)
+        {
+            sb.AppendLine("  (Henüz adım kaydedilmedi)");
+            sb.AppendLine();
+            sb.AppendLine("  Format:");
+            sb.AppendLine("  S1 | Başlangıç Sayfası");
+            sb.AppendLine("  G1 | UI Element İsmi | Görev | Teknoloji");
+            sb.AppendLine("  S2 | Sonuç Sayfası (G1'den sonra)");
+            sb.AppendLine("  G2 | UI Element İsmi | Görev | Teknoloji");
+            sb.AppendLine("  ...");
+        }
+        else
+        {
+            // Her adım için S (Sayfa) ve G (Görev) satırlarını oluştur
+            foreach (var step in _currentChain.Steps.OrderBy(s => s.StepNumber))
+            {
+                int stepNum = step.StepNumber;
+
+                // S satırı - Hangi sayfadayız
+                string pageName = GetPageName(step);
+                sb.AppendLine($"S{stepNum} | {pageName}");
+
+                // G satırı - Ne yapıyoruz
+                if (step.StepType == StepType.UIElementAction ||
+                    step.StepType == StepType.TargetSelection)
+                {
+                    string elementName = GetElementName(step);
+                    string taskDesc = GetTaskDescription(step);
+                    string technology = GetTechnologyInfo(step);
+
+                    sb.AppendLine($"G{stepNum} | {elementName} | {taskDesc} | {technology}");
+                }
+                else if (step.StepType == StepType.ConditionalBranch)
+                {
+                    sb.AppendLine($"G{stepNum} | Koşul Kontrolü | Dallanma | Tip3");
+                }
+                else if (step.StepType == StepType.LoopOrEnd)
+                {
+                    string loopDesc = step.IsChainEnd ? "Zincir Bitir" : $"Döngü→{step.LoopBackToStepId}";
+                    sb.AppendLine($"G{stepNum} | Döngü/Bitiş | {loopDesc} | Tip4");
+                }
+
+                sb.AppendLine(); // Boş satır (okunabilirlik için)
+            }
+        }
+
+        sb.AppendLine("═══════════════════════════════════════════════════════════════════");
+        sb.AppendLine($"  Mevcut Adım: {_currentStepNumber}");
+        sb.AppendLine("═══════════════════════════════════════════════════════════════════");
+
+        txtTaskChainSteps.Text = sb.ToString();
+    }
+
+    /// <summary>
+    /// Adımdan sayfa ismini çıkarır
+    /// </summary>
+    private string GetPageName(TaskStep step)
+    {
+        if (step.StepType == StepType.TargetSelection && step.Target != null)
+        {
+            return TruncateString(step.Target.WindowTitle ?? "Hedef Sayfa", 23);
+        }
+        else if (step.UIElement != null)
+        {
+            return TruncateString(step.UIElement.WindowTitle ?? step.UIElement.WindowName ?? "Sayfa", 23);
+        }
+        else if (step.StepType == StepType.ConditionalBranch)
+        {
+            return TruncateString(step.Condition?.PageIdentifier ?? "Koşul Sayfa", 23);
+        }
+        return "-";
+    }
+
+    /// <summary>
+    /// Adımdan UI element ismini çıkarır
+    /// </summary>
+    private string GetElementName(TaskStep step)
+    {
+        if (step.UIElement != null)
+        {
+            // En anlamlı ismi bul
+            if (!string.IsNullOrEmpty(step.UIElement.Name))
+                return TruncateString(step.UIElement.Name, 30);
+            if (!string.IsNullOrEmpty(step.UIElement.AutomationId))
+                return TruncateString($"[{step.UIElement.AutomationId}]", 30);
+            if (!string.IsNullOrEmpty(step.UIElement.ControlType))
+                return TruncateString(step.UIElement.ControlType, 30);
+        }
+
+        if (step.StepType == StepType.TargetSelection)
+        {
+            // Hedef seçimi için hedef bilgisini göster
+            if (step.Target != null)
+            {
+                if (step.Target.IsDesktop)
+                    return "Masaüstü";
+                if (!string.IsNullOrEmpty(step.Target.WindowTitle))
+                    return TruncateString(step.Target.WindowTitle, 30);
+                if (!string.IsNullOrEmpty(step.Target.ProgramPath))
+                {
+                    var fileName = System.IO.Path.GetFileNameWithoutExtension(step.Target.ProgramPath);
+                    return TruncateString(fileName, 30);
+                }
+            }
+            return "Hedef Pencere";
+        }
+
+        if (step.StepType == StepType.ConditionalBranch)
+            return "Koşul Kontrolü";
+        if (step.StepType == StepType.LoopOrEnd)
+            return step.IsChainEnd ? "Zincir Sonu" : "Döngü";
+
+        return "-";
+    }
+
+    /// <summary>
+    /// Adımdan görev açıklamasını çıkarır
+    /// </summary>
+    private string GetTaskDescription(TaskStep step)
+    {
+        string desc = "";
+
+        // Action type'a göre kısa ve net açıklama
+        desc = step.Action switch
+        {
+            ActionType.LeftClick => "Sol Tık",
+            ActionType.RightClick => "Sağ Tık",
+            ActionType.DoubleClick => "Çift Tık",
+            ActionType.KeyPress => $"Tuş[{TruncateString(step.KeysToPress ?? "", 10)}]",
+            ActionType.TypeText => $"Yaz[{TruncateString(step.TextToType ?? "", 10)}]",
+            ActionType.MouseWheel => step.MouseWheelDelta > 0 ? "Tekerlek↑" : "Tekerlek↓",
+            ActionType.CheckCondition => "Koşul Kontrol",
+            _ => ""
+        };
+
+        // StepType'a göre
+        if (string.IsNullOrEmpty(desc))
+        {
+            if (step.StepType == StepType.TargetSelection)
+                desc = "Pencereyi Aç/Seç";
+            else if (step.StepType == StepType.ConditionalBranch)
+                desc = "Koşul Kontrol";
+            else if (step.StepType == StepType.LoopOrEnd && step.IsLoopEnd)
+                desc = $"Döngü→{step.LoopBackToStepId}";
+            else if (step.StepType == StepType.LoopOrEnd && step.IsChainEnd)
+                desc = "Zincir Bitir";
+        }
+
+        return TruncateString(desc, 20);
+    }
+
+    /// <summary>
+    /// Metni belirtilen uzunlukta keser ve "..." ekler
+    /// </summary>
+    private string TruncateString(string text, int maxLength)
+    {
+        if (string.IsNullOrEmpty(text))
+            return "";
+
+        if (text.Length <= maxLength)
+            return text;
+
+        return text.Substring(0, maxLength - 3) + "...";
+    }
+
+    /// <summary>
+    /// Kullanılan teknoloji bilgisini döndürür
+    /// </summary>
+    private string GetTechnologyInfo(TaskStep step)
+    {
+        // Seçili strateji varsa ondan bilgi al
+        var strategy = step.SelectedStrategy;
+        if (strategy != null)
+        {
+            // Smart Element Recorder kullanıldıysa
+            if (strategy.RecordedElement != null)
+            {
+                // Strateji tipine göre
+                switch (strategy.Type)
+                {
+                    case LocatorType.TableRowIndex:
+                        return "Smart:TableRow";
+                    case LocatorType.TextContent:
+                        return "Smart:CellText";
+                    case LocatorType.ClassAndName:
+                        return "Smart:Class+Name";
+                    case LocatorType.PlaywrightSelector:
+                        return "Smart:Playwright";
+                    default:
+                        return $"Smart:{strategy.Type}";
+                }
+            }
+
+            // Normal UI Automation stratejisi
+            switch (strategy.Type)
+            {
+                case LocatorType.AutomationId:
+                    return "UIA:AutomationId";
+                case LocatorType.Name:
+                    return "UIA:Name";
+                case LocatorType.ClassName:
+                    return "UIA:ClassName";
+                case LocatorType.AutomationIdAndControlType:
+                    return "UIA:Id+Type";
+                case LocatorType.NameAndControlType:
+                    return "UIA:Name+Type";
+                case LocatorType.ElementPath:
+                    return "UIA:Path";
+                case LocatorType.TreePath:
+                    return "UIA:TreePath";
+                case LocatorType.XPath:
+                    return "Web:XPath";
+                case LocatorType.CssSelector:
+                    return "Web:CSS";
+                case LocatorType.HtmlId:
+                    return "Web:HtmlId";
+                case LocatorType.NameAndParent:
+                    return "UIA:Name+Parent";
+                case LocatorType.ClassNameAndIndex:
+                    return "UIA:Class+Index";
+                case LocatorType.Coordinates:
+                    return "Mouse:Coords";
+                case LocatorType.NameAndControlTypeAndIndex:
+                    return "UIA:Name+Type+Idx";
+                case LocatorType.NameAndParentAndIndex:
+                    return "UIA:Name+Parent+Idx";
+                default:
+                    return $"UIA:{strategy.Type}";
+            }
+        }
+
+        // Strateji yoksa step type'a göre
+        if (step.StepType == StepType.TargetSelection)
+        {
+            if (step.Target?.IsDesktop == true)
+                return "System:Desktop";
+            if (!string.IsNullOrEmpty(step.Target?.ProgramPath))
+                return "System:Program";
+            if (!string.IsNullOrEmpty(step.Target?.WindowTitle))
+                return "UIA:Window";
+            return "System";
+        }
+
+        // UIElement varsa DetectionMethod'a bak
+        if (step.UIElement != null && !string.IsNullOrEmpty(step.UIElement.DetectionMethod))
+        {
+            return step.UIElement.DetectionMethod;
+        }
+
+        return "Unknown";
+    }
+
+    /// <summary>
+    /// Son adımı sil butonu
+    /// </summary>
+    private void btnDeleteLastStep_Click(object? sender, EventArgs e)
+    {
+        if (_currentChain.Steps.Count == 0)
+        {
+            ShowMessage("Silinecek adım yok!", "Bilgi", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        var lastStep = _currentChain.Steps.OrderBy(s => s.StepNumber).Last();
+
+        var result = ShowMessage(
+            $"Son adımı silmek istediğinizden emin misiniz?\n\n" +
+            $"Adım {lastStep.StepNumber}: {lastStep.Description}",
+            "Son Adımı Sil",
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Question);
+
+        if (result == DialogResult.Yes)
+        {
+            _currentChain.Steps.Remove(lastStep);
+            LogMessage($"✓ Adım {lastStep.StepNumber} silindi");
+
+            // Mevcut adım numarasını güncelle
+            if (_currentStepNumber > 1)
+                _currentStepNumber--;
+
+            UpdateStepNumberLabel();
+            UpdateTaskChainViewer();
+        }
+    }
+
+    /// <summary>
+    /// Belirli bir adımı sil (kullanıcıdan adım numarası sor)
+    /// </summary>
+    private void btnDeleteStep_Click(object? sender, EventArgs e)
+    {
+        if (_currentChain.Steps.Count == 0)
+        {
+            ShowMessage("Silinecek adım yok!", "Bilgi", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        // Adım listesini göster
+        var stepList = string.Join("\n", _currentChain.Steps
+            .OrderBy(s => s.StepNumber)
+            .Select(s => $"Adım {s.StepNumber}: {s.Description}"));
+
+        // Input dialog göster
+        string input = Microsoft.VisualBasic.Interaction.InputBox(
+            $"Silmek istediğiniz adımın numarasını girin:\n\n{stepList}",
+            "Adım Sil",
+            "");
+
+        if (string.IsNullOrWhiteSpace(input))
+            return;
+
+        if (int.TryParse(input.Trim(), out int stepNumber))
+        {
+            var stepToDelete = _currentChain.Steps.FirstOrDefault(s => s.StepNumber == stepNumber);
+
+            if (stepToDelete == null)
+            {
+                ShowMessage($"Adım {stepNumber} bulunamadı!", "Hata", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
+            var result = ShowMessage(
+                $"Bu adımı silmek istediğinizden emin misiniz?\n\n" +
+                $"Adım {stepToDelete.StepNumber}: {stepToDelete.Description}\n\n" +
+                $"NOT: Daha sonraki adımların numaraları değişmeyecektir.",
+                "Adım Sil",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning);
+
+            if (result == DialogResult.Yes)
+            {
+                _currentChain.Steps.Remove(stepToDelete);
+                LogMessage($"✓ Adım {stepToDelete.StepNumber} silindi");
+                UpdateTaskChainViewer();
+            }
+        }
+        else
+        {
+            ShowMessage("Geçersiz adım numarası!", "Hata", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    /// <summary>
+    /// Adımı düzenle
+    /// </summary>
+    private void btnEditStep_Click(object? sender, EventArgs e)
+    {
+        if (_currentChain.Steps.Count == 0)
+        {
+            ShowMessage("Düzenlenecek adım yok!", "Bilgi", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        // Düzenleme modundayken tekrar düzenle butonuna basılmasını engelle
+        if (_isEditingMode)
+        {
+            ShowMessage("Zaten bir adımı düzenliyorsunuz. Lütfen önce 'Adımı Kaydet' butonuna basın veya düzenlemeyi iptal edin.",
+                "Uyarı", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        // Adım listesini göster
+        var stepList = string.Join("\n", _currentChain.Steps
+            .OrderBy(s => s.StepNumber)
+            .Select(s => $"Adım {s.StepNumber}: {s.Description}"));
+
+        // Input dialog göster
+        string input = Microsoft.VisualBasic.Interaction.InputBox(
+            $"Düzenlemek istediğiniz adımın numarasını girin:\n\n{stepList}",
+            "Adım Düzenle",
+            "");
+
+        if (string.IsNullOrWhiteSpace(input))
+            return;
+
+        if (int.TryParse(input.Trim(), out int stepNumber))
+        {
+            var stepToEdit = _currentChain.Steps.FirstOrDefault(s => s.StepNumber == stepNumber);
+
+            if (stepToEdit == null)
+            {
+                ShowMessage($"Adım {stepNumber} bulunamadı!", "Hata", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
+            // Düzenleme moduna geç
+            LoadStepForEditing(stepToEdit);
+        }
+        else
+        {
+            ShowMessage("Geçersiz adım numarası!", "Hata", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    /// <summary>
+    /// Adımı düzenleme için forma yükle
+    /// </summary>
+    private void LoadStepForEditing(TaskStep step)
+    {
+        _isEditingMode = true;
+        _stepBeingEdited = step;
+
+        LogMessage($"📝 Adım {step.StepNumber} düzenleme için yükleniyor...");
+
+        // Header'ı güncelle
+        lblTitle.Text = $"Görev Zinciri Kaydedici - Adım {step.StepNumber} Düzenleniyor";
+        lblCurrentStep.Text = $"Düzenleme Modu: Adım {step.StepNumber}";
+        lblCurrentStep.ForeColor = Color.FromArgb(255, 165, 0); // Turuncu renk
+
+        // Buton metnini değiştir
+        btnSaveStep.Text = "💾 Değişiklikleri Kaydet";
+        btnSaveStep.BackColor = Color.FromArgb(255, 140, 0); // Turuncu
+
+        // Adım tipine göre formu doldur
+        switch (step.StepType)
+        {
+            case StepType.TargetSelection:
+                cmbStepType.SelectedIndex = 0;
+                LoadTargetSelectionForEditing(step);
+                break;
+
+            case StepType.UIElementAction:
+                cmbStepType.SelectedIndex = 1;
+                LoadUIElementActionForEditing(step);
+                break;
+
+            case StepType.ConditionalBranch:
+                cmbStepType.SelectedIndex = 2;
+                LogMessage("⚠️ Tip 3 (Koşullu Dallanma) adımları şu an düzenlenemez.");
+                ShowMessage("Tip 3 (Koşullu Dallanma) adımları şu an düzenlenemez.\nBu özellik yakında eklenecektir.",
+                    "Bilgi", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                CancelEditMode();
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Hedef seçimi bilgilerini forma yükle
+    /// </summary>
+    private void LoadTargetSelectionForEditing(TaskStep step)
+    {
+        if (step.Target == null) return;
+
+        _currentStep = step;
+        tabControl.SelectedTab = tabTargetSelection;
+
+        if (step.Target.IsDesktop)
+        {
+            txtProgramPath.Text = "Hedef: Masaüstü";
+        }
+        else if (!string.IsNullOrEmpty(step.Target.ProgramPath))
+        {
+            txtProgramPath.Text = step.Target.ProgramPath;
+        }
+        else if (!string.IsNullOrEmpty(step.Target.WindowTitle))
+        {
+            txtProgramPath.Text = $"Pencere: {step.Target.WindowTitle} (Class: {step.Target.WindowClassName})";
+        }
+
+        LogMessage("✓ Hedef seçimi bilgileri yüklendi");
+    }
+
+    /// <summary>
+    /// UI Element işlem bilgilerini forma yükle
+    /// </summary>
+    private void LoadUIElementActionForEditing(TaskStep step)
+    {
+        if (step.UIElement == null) return;
+
+        _currentStep = step;
+        tabControl.SelectedTab = tabUIElement;
+
+        // Element özelliklerini göster
+        var properties = new System.Text.StringBuilder();
+        properties.AppendLine($"Name: {step.UIElement.Name ?? "N/A"}");
+        properties.AppendLine($"AutomationId: {step.UIElement.AutomationId ?? "N/A"}");
+        properties.AppendLine($"ClassName: {step.UIElement.ClassName ?? "N/A"}");
+        properties.AppendLine($"ControlType: {step.UIElement.ControlType ?? "N/A"}");
+
+        if (!string.IsNullOrEmpty(step.UIElement.BoundingRectangle))
+        {
+            properties.AppendLine($"BoundingRectangle: {step.UIElement.BoundingRectangle}");
+        }
+        else if (step.UIElement.X.HasValue && step.UIElement.Y.HasValue)
+        {
+            properties.AppendLine($"Position: X={step.UIElement.X}, Y={step.UIElement.Y}");
+            if (step.UIElement.Width.HasValue && step.UIElement.Height.HasValue)
+            {
+                properties.AppendLine($"Size: W={step.UIElement.Width}, H={step.UIElement.Height}");
+            }
+        }
+
+        txtElementProperties.Text = properties.ToString();
+
+        // Action tipini ayarla
+        cmbActionType.SelectedIndex = step.Action switch
+        {
+            ActionType.LeftClick => 0,
+            ActionType.RightClick => 1,
+            ActionType.DoubleClick => 2,
+            ActionType.MouseWheel => 3,
+            ActionType.KeyPress => 4,
+            ActionType.TypeText => 5,
+            _ => 0
+        };
+
+        // Klavye tuşları veya metni yükle
+        if (step.Action == ActionType.KeyPress && !string.IsNullOrEmpty(step.KeysToPress))
+        {
+            txtKeysToPress.Text = step.KeysToPress;
+            lblKeysToPress.Visible = true;
+            txtKeysToPress.Visible = true;
+        }
+        else if (step.Action == ActionType.TypeText && !string.IsNullOrEmpty(step.TextToType))
+        {
+            txtKeysToPress.Text = step.TextToType;
+            lblKeysToPress.Visible = true;
+            txtKeysToPress.Visible = true;
+        }
+
+        // Stratejileri yükle
+        if (step.SelectedStrategy != null)
+        {
+            _selectedStrategy = step.SelectedStrategy;
+            _availableStrategies.Clear();
+            _availableStrategies.Add(step.SelectedStrategy);
+
+            lstStrategies.Items.Clear();
+            var strategyDisplay = $"{step.SelectedStrategy.Name} [{(step.SelectedStrategy.IsSuccessful ? "✓" : "✗")}]";
+            lstStrategies.Items.Add(strategyDisplay);
+            lstStrategies.SelectedIndex = 0;
+
+            lblSelectedStrategy.Text = $"Seçili Strateji: {step.SelectedStrategy.Name}";
+            lblSelectedStrategy.ForeColor = step.SelectedStrategy.IsSuccessful ? Color.Green : Color.Red;
+        }
+
+        LogMessage("✓ UI Element işlem bilgileri yüklendi");
+    }
+
+    /// <summary>
+    /// Düzenleme modunu iptal et
+    /// </summary>
+    private void CancelEditMode()
+    {
+        _isEditingMode = false;
+        _stepBeingEdited = null;
+
+        // Header'ı sıfırla
+        lblTitle.Text = "Görev Zinciri Kaydedici";
+        lblCurrentStep.Text = $"Adım: {_currentStepNumber}";
+        lblCurrentStep.ForeColor = Color.FromArgb(100, 200, 255);
+
+        // Buton metnini sıfırla
+        btnSaveStep.Text = "💾 Adımı Kaydet";
+        btnSaveStep.BackColor = Color.FromArgb(0, 120, 212);
+
+        // Yeni bir adım oluştur
+        _currentStep = new TaskStep
+        {
+            StepNumber = _currentStepNumber,
+            StepType = StepType.TargetSelection
+        };
+
+        LogMessage("✓ Düzenleme modu iptal edildi");
+    }
+
+    /// <summary>
+    /// Tüm adımları sil
+    /// </summary>
+    private void btnDeleteAllSteps_Click(object? sender, EventArgs e)
+    {
+        if (_currentChain.Steps.Count == 0)
+        {
+            ShowMessage("Silinecek adım yok!", "Bilgi", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        var result = ShowMessage(
+            $"TÜM ADıMLARI silmek istediğinizden emin misiniz?\n\n" +
+            $"Toplam {_currentChain.Steps.Count} adım silinecek!\n\n" +
+            $"Bu işlem geri alınamaz!",
+            "Tüm Adımları Sil",
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Warning);
+
+        if (result == DialogResult.Yes)
+        {
+            var count = _currentChain.Steps.Count;
+            _currentChain.Steps.Clear();
+            _currentStepNumber = 1;
+
+            UpdateStepNumberLabel();
+            UpdateTaskChainViewer();
+            LogMessage($"✓ Tüm adımlar silindi ({count} adım)");
         }
     }
 
