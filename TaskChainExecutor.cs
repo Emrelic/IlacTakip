@@ -302,8 +302,28 @@ public class TaskChainExecutor
 
         Log($"Element aranıyor: {step.SelectedStrategy.Name}");
 
-        // Elementi bul
-        var element = await Task.Run(() => FindElementByStrategy(step.UIElement, step.SelectedStrategy), cancellationToken);
+        // Elementi bul - cancellation token ile timeout uygula
+        AutomationElement? element = null;
+        using (var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
+        {
+            linkedCts.CancelAfter(TimeSpan.FromSeconds(30)); // 30 saniye timeout
+
+            try
+            {
+                element = await Task.Run(() => FindElementByStrategy(step.UIElement, step.SelectedStrategy), linkedCts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    throw; // Kullanıcı iptal etti
+                }
+                else
+                {
+                    throw new TimeoutException("Element arama işlemi 30 saniye içinde tamamlanamadı.");
+                }
+            }
+        }
 
         if (element == null)
         {

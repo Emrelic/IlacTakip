@@ -1,5 +1,0 @@
-C:\Users\ikizler1\AndroidStudioProjects\IlacTakip\obj\Debug\net9.0-windows\MedulaOtomasyon.GeneratedMSBuildEditorConfig.editorconfig
-C:\Users\ikizler1\AndroidStudioProjects\IlacTakip\obj\Debug\net9.0-windows\MedulaOtomasyon.AssemblyInfoInputs.cache
-C:\Users\ikizler1\AndroidStudioProjects\IlacTakip\obj\Debug\net9.0-windows\MedulaOtomasyon.AssemblyInfo.cs
-C:\Users\ikizler1\AndroidStudioProjects\IlacTakip\obj\Debug\net9.0-windows\MedulaOtomasyon.csproj.CoreCompileInputs.cache
-C:\Users\ikizler1\AndroidStudioProjects\IlacTakip\obj\Debug\net9.0-windows\MedulaOtomasyon.csproj.AssemblyReference.cache

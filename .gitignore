@@ -1,0 +1,20 @@
+# Build outputs
+bin/
+obj/
+
+# Playwright binaries (100MB+ files)
+.playwright/
+**/.playwright/
+
+# Logs
+*.log
+
+# User-specific files
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Temporary files
+nul
+*_temp.cs

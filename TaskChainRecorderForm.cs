@@ -32,7 +32,6 @@ public partial class TaskChainRecorderForm : Form
     private List<ElementLocatorStrategy> _smartStrategies = new();
     private ElementLocatorStrategy? _selectedSmartStrategy = null;
     private readonly string _medulaHtmlPath = Path.Combine(AppContext.BaseDirectory, "medula sayfası kaynak kodları.txt");
-    private bool _smartStepAutoSaved = false;
 
     public TaskChainRecorderForm()
     {
@@ -214,20 +213,31 @@ public partial class TaskChainRecorderForm : Form
         // Tip seçimine göre ilgili TabPage'leri aktif et
         switch (cmbStepType.SelectedIndex)
         {
+            case -1: // Hiçbiri seçili değil
+                lblStepType.Text = "Görev Tipi: Lütfen Seçiniz";
+                lblStepType.ForeColor = Color.Gray;
+                break;
+
             case 0: // Tip 1: Hedef Program/Pencere Seçimi
                 _currentStep.StepType = StepType.TargetSelection;
+                lblStepType.Text = "Görev Tipi: Hedef Program/Pencere Seçimi";
+                lblStepType.ForeColor = Color.FromArgb(0, 120, 212);
                 LogMessage("Tip 1 seçildi: Hedef Program/Pencere Seçimi");
                 tabControl.SelectedTab = tabTargetSelection;
                 break;
 
             case 1: // Tip 2: UI Element Tıklama/Tuşlama
                 _currentStep.StepType = StepType.UIElementAction;
+                lblStepType.Text = "Görev Tipi: UI Element Tıklama/Tuşlama";
+                lblStepType.ForeColor = Color.FromArgb(0, 120, 212);
                 LogMessage("Tip 2 seçildi: UI Element Tıklama/Tuşlama");
                 tabControl.SelectedTab = tabUIElement;
                 break;
 
             case 2: // Tip 3: Sayfa Durum Kontrolü (Koşullu Dallanma)
                 _currentStep.StepType = StepType.ConditionalBranch;
+                lblStepType.Text = "Görev Tipi: Sayfa Durum Kontrolü";
+                lblStepType.ForeColor = Color.FromArgb(0, 120, 212);
                 LogMessage("Tip 3 seçildi: Sayfa Durum Kontrolü (Koşullu Dallanma)");
                 OpenConditionalBranchRecorder();
                 break;
@@ -235,7 +245,7 @@ public partial class TaskChainRecorderForm : Form
             case 3: // Tip 4: Döngü veya Bitiş Koşulu
                 ShowMessage("Tip 4: Döngü veya Bitiş Koşulu henüz uygulanmadı.\nYakında eklenecek.",
                     "Bilgi", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                cmbStepType.SelectedIndex = 0;
+                cmbStepType.SelectedIndex = -1;
                 break;
         }
     }
@@ -699,8 +709,15 @@ public partial class TaskChainRecorderForm : Form
                 _ => ActionType.None
             };
 
+            // Mouse wheel delta değerini al (varsa)
+            int mouseWheelDelta = 0;
+            if (action == ActionType.MouseWheel)
+            {
+                mouseWheelDelta = _currentStep.MouseWheelDelta ?? 120; // Varsayılan 120 (yukarı scroll)
+            }
+
             // Eylemi gerçekleştir
-            ExecuteTestAction(element, action, txtKeysToPress.Text);
+            ExecuteTestAction(element, action, txtKeysToPress.Text, mouseWheelDelta);
 
             LogMessage($"✓ Eylem başarıyla gerçekleştirildi: {cmbActionType.Text}");
             if (lblTestResult != null)
@@ -720,7 +737,7 @@ public partial class TaskChainRecorderForm : Form
         }
     }
 
-    private void ExecuteTestAction(AutomationElement element, ActionType action, string inputText)
+    private void ExecuteTestAction(AutomationElement element, ActionType action, string inputText, int mouseWheelDelta = 0)
     {
         switch (action)
         {
@@ -745,12 +762,14 @@ public partial class TaskChainRecorderForm : Form
                 break;
 
             case ActionType.RightClick:
-                LogMessage("Sağ tıklama henüz desteklenmiyor.");
-                throw new NotSupportedException("Sağ tıklama henüz implement edilmedi.");
+                LogMessage("Sağ tıklama yapılıyor...");
+                RightClickElement(element);
+                break;
 
             case ActionType.MouseWheel:
-                LogMessage("Mouse wheel henüz desteklenmiyor.");
-                throw new NotSupportedException("Mouse wheel henüz implement edilmedi.");
+                LogMessage($"Mouse tekerlek yapılıyor... (Delta: {mouseWheelDelta})");
+                MouseWheelOnElement(element, mouseWheelDelta);
+                break;
 
             default:
                 throw new NotSupportedException($"Action type desteklenmiyor: {action}");
@@ -782,6 +801,22 @@ public partial class TaskChainRecorderForm : Form
         MedulaAutomation.MouseClick(centerX, centerY);
         Thread.Sleep(50);
         MedulaAutomation.MouseClick(centerX, centerY);
+    }
+
+    private void RightClickElement(AutomationElement element)
+    {
+        var rect = element.Current.BoundingRectangle;
+        var centerX = (int)(rect.Left + rect.Width / 2);
+        var centerY = (int)(rect.Top + rect.Height / 2);
+        MedulaAutomation.MouseRightClick(centerX, centerY);
+    }
+
+    private void MouseWheelOnElement(AutomationElement element, int delta)
+    {
+        var rect = element.Current.BoundingRectangle;
+        var centerX = (int)(rect.Left + rect.Width / 2);
+        var centerY = (int)(rect.Top + rect.Height / 2);
+        MedulaAutomation.MouseWheel(centerX, centerY, delta);
     }
 
     private void TypeText(AutomationElement element, string text)
@@ -1646,7 +1681,6 @@ public partial class TaskChainRecorderForm : Form
             _smartStrategies.Clear();
             lstSmartStrategies.Items.Clear();
             txtSmartElementProperties.Text = "";
-            _smartStepAutoSaved = false;
             LogMessage($"[DEBUG] Önceki kayıtlar temizlendi");
 
             // SmartElementRecorder oluştur
@@ -1746,22 +1780,31 @@ public partial class TaskChainRecorderForm : Form
     {
         try
         {
+            var processingStartTime = DateTime.Now;
+
             LogMessage($"\n🎯 ELEMENT YAKALANDI!");
             LogMessage($"Tip: {element.ElementType}");
             LogMessage($"Açıklama: {element.Description}");
+            LogMessage($"⏱️ Yakalama Zamanı: {element.Timestamp:HH:mm:ss.fff}");
 
             // Element bilgilerini sakla
             _lastRecordedElement = element;
             LogMessage($"[DEBUG] _lastRecordedElement atandı: {_lastRecordedElement != null}");
 
+            var playwrightStartTime = DateTime.Now;
             await EnrichWithPlaywrightAsync(element);
+            var playwrightDuration = (DateTime.Now - playwrightStartTime).TotalMilliseconds;
+            LogMessage($"⏱️ Playwright Analiz Süresi: {playwrightDuration:F0}ms");
 
             // Element bilgilerini göster
             DisplaySmartElementInfo(element);
 
             // Stratejileri oluştur
+            var strategyStartTime = DateTime.Now;
             CreateSmartStrategies(element);
+            var strategyDuration = (DateTime.Now - strategyStartTime).TotalMilliseconds;
             LogMessage($"[DEBUG] Strateji sayısı: {_smartStrategies.Count}");
+            LogMessage($"⏱️ Strateji Oluşturma Süresi: {strategyDuration:F0}ms");
 
             // Recording'i otomatik durdur
             StopSmartRecording();
@@ -1769,7 +1812,9 @@ public partial class TaskChainRecorderForm : Form
             // Test butonunu aktif et
             btnTestSmartStrategies.Enabled = true;
 
+            var totalDuration = (DateTime.Now - processingStartTime).TotalMilliseconds;
             LogMessage($"✅ {_smartStrategies.Count} akıllı strateji oluşturuldu!");
+            LogMessage($"⏱️ Toplam İşlem Süresi: {totalDuration:F0}ms");
             LogMessage("👉 'Akıllı Stratejileri Test Et' butonuna tıklayarak test edin.");
         }
         catch (Exception ex)
@@ -2149,15 +2194,18 @@ public partial class TaskChainRecorderForm : Form
                 {
                     try
                     {
+                        var pwStartTime = Stopwatch.StartNew();
                         playwrightSuccess = await PlaywrightRowAnalyzer.TestStrategyAsync(strategy, _medulaHtmlPath);
+                        pwStartTime.Stop();
+
                         if (playwrightSuccess)
                         {
-                            LogMessage("  ✅ Playwright testi başarılı (statik sayfa)");
+                            LogMessage($"  ✅ Playwright testi başarılı ({pwStartTime.ElapsedMilliseconds}ms)");
                         }
                         else
                         {
                             errors.Add("Playwright testi başarısız");
-                            LogMessage("  ⚠️ Playwright testi başarısız");
+                            LogMessage($"  ⚠️ Playwright testi başarısız ({pwStartTime.ElapsedMilliseconds}ms)");
                         }
                     }
                     catch (Exception ex)
@@ -2174,15 +2222,18 @@ public partial class TaskChainRecorderForm : Form
 
                 if (_smartRecorder != null)
                 {
+                    var uiaStartTime = Stopwatch.StartNew();
                     uiaSuccess = _smartRecorder.ExecuteLocatorStrategy(strategy);
+                    uiaStartTime.Stop();
+
                     if (uiaSuccess)
                     {
-                        LogMessage("  ✅ UI Automation testi başarılı");
+                        LogMessage($"  ✅ UI Automation testi başarılı ({uiaStartTime.ElapsedMilliseconds}ms)");
                     }
                     else
                     {
                         errors.Add("UI Automation testi başarısız");
-                        LogMessage("  ❌ UI Automation testi başarısız");
+                        LogMessage($"  ❌ UI Automation testi başarısız ({uiaStartTime.ElapsedMilliseconds}ms)");
                         if (playwrightSuccess)
                         {
                             LogMessage("  ⚠️ Not: Playwright selector statik sayfada çalıştı ancak canlı UI bulunamadı.");
@@ -2206,11 +2257,11 @@ public partial class TaskChainRecorderForm : Form
                 if (success)
                 {
                     successCount++;
-                    LogMessage("  ✅ SONUÇ: Başarılı");
+                    LogMessage($"  ✅ SONUÇ: Başarılı (Toplam: {stopwatch.ElapsedMilliseconds}ms)");
                 }
                 else
                 {
-                    LogMessage("  ❌ SONUÇ: Başarısız");
+                    LogMessage($"  ❌ SONUÇ: Başarısız (Toplam: {stopwatch.ElapsedMilliseconds}ms)");
                 }
 
                 await Task.Delay(200);
@@ -2242,7 +2293,19 @@ public partial class TaskChainRecorderForm : Form
                 lstSmartStrategies.SelectedIndex = bestIndex;
             }
 
-            AutoSaveSmartStepIfPossible(bestStrategy);
+            // Element bilgisini doldur (kaydetmek kullanıcıya bırakılır)
+            if (_currentStep.StepType != StepType.UIElementAction)
+            {
+                cmbStepType.SelectedIndex = 1;
+                _currentStep.StepType = StepType.UIElementAction;
+            }
+
+            _selectedSmartStrategy = bestStrategy;
+            _currentStep.UIElement = SmartElementRecorder.ConvertToUIElementInfo(_lastRecordedElement);
+
+            LogMessage("💾 Test başarılı - Şimdi 'Adımı Kaydet' butonuna tıklayabilirsiniz.");
+            lblSmartTestResult.Text = "✅ Başarılı! Adımı kaydetmek için 'Adımı Kaydet' butonuna tıklayın.";
+            lblSmartTestResult.ForeColor = Color.Green;
         }
         else
         {
@@ -2264,34 +2327,6 @@ public partial class TaskChainRecorderForm : Form
             var text = $"{prefix} [{i + 1}] {strategy.Name}: {strategy.Description}";
             lstSmartStrategies.Items.Add(text);
         }
-    }
-
-    private void AutoSaveSmartStepIfPossible(ElementLocatorStrategy strategy)
-    {
-        if (_smartStepAutoSaved)
-        {
-            LogMessage("ℹ️ Adım daha önce kaydedildi, otomatik kayıt atlanıyor.");
-            return;
-        }
-
-        if (_lastRecordedElement == null)
-        {
-            LogMessage("⚠️ Otomatik kayıt için RecordedElement bulunamadı.");
-            return;
-        }
-
-        if (_currentStep.StepType != StepType.UIElementAction)
-        {
-            cmbStepType.SelectedIndex = 1;
-            _currentStep.StepType = StepType.UIElementAction;
-        }
-
-        _selectedSmartStrategy = strategy;
-        _currentStep.UIElement = SmartElementRecorder.ConvertToUIElementInfo(_lastRecordedElement);
-
-        LogMessage("💾 Test başarılı - adım otomatik olarak kaydediliyor.");
-        btnSaveStep_Click(null, EventArgs.Empty);
-        _smartStepAutoSaved = true;
     }
 
     /// <summary>

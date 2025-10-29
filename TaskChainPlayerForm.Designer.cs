@@ -20,12 +20,14 @@ namespace MedulaOtomasyon
             grpChainList = new GroupBox();
             lstChains = new ListBox();
             btnRefresh = new Button();
+            btnEditChain = new Button();
             grpSteps = new GroupBox();
             lstSteps = new ListBox();
             grpControls = new GroupBox();
             btnPlay = new Button();
             btnPause = new Button();
             btnStop = new Button();
+            btnStopAndEdit = new Button();
             btnDebug = new Button();
             grpSpeed = new GroupBox();
             rbSlow = new RadioButton();
@@ -57,73 +59,92 @@ namespace MedulaOtomasyon
             //
             // grpChainList
             //
+            grpChainList.Controls.Add(btnEditChain);
             grpChainList.Controls.Add(btnRefresh);
             grpChainList.Controls.Add(lstChains);
+            grpChainList.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
             grpChainList.Location = new Point(12, 12);
             grpChainList.Name = "grpChainList";
-            grpChainList.Size = new Size(320, 350);
+            grpChainList.Size = new Size(450, 380);
             grpChainList.TabIndex = 0;
             grpChainList.TabStop = false;
             grpChainList.Text = "Kaydedilmiş Görev Zincirleri";
             //
             // lstChains
             //
+            lstChains.Font = new Font("Segoe UI", 9.5F);
             lstChains.FormattingEnabled = true;
-            lstChains.ItemHeight = 15;
-            lstChains.Location = new Point(6, 22);
+            lstChains.ItemHeight = 17;
+            lstChains.Location = new Point(10, 28);
             lstChains.Name = "lstChains";
-            lstChains.Size = new Size(308, 274);
+            lstChains.Size = new Size(430, 278);
             lstChains.TabIndex = 0;
             lstChains.SelectedIndexChanged += lstChains_SelectedIndexChanged;
             //
             // btnRefresh
             //
-            btnRefresh.Location = new Point(6, 307);
+            btnRefresh.Font = new Font("Segoe UI", 10F);
+            btnRefresh.Location = new Point(10, 315);
             btnRefresh.Name = "btnRefresh";
-            btnRefresh.Size = new Size(308, 30);
+            btnRefresh.Size = new Size(210, 35);
             btnRefresh.TabIndex = 1;
             btnRefresh.Text = "🔄 Yenile";
             btnRefresh.UseVisualStyleBackColor = true;
             btnRefresh.Click += btnRefresh_Click;
             //
+            // btnEditChain
+            //
+            btnEditChain.Font = new Font("Segoe UI", 10F);
+            btnEditChain.Location = new Point(230, 315);
+            btnEditChain.Name = "btnEditChain";
+            btnEditChain.Size = new Size(210, 35);
+            btnEditChain.TabIndex = 2;
+            btnEditChain.Text = "✏️ Zinciri Düzenle";
+            btnEditChain.UseVisualStyleBackColor = true;
+            btnEditChain.Click += btnEditChain_Click;
+            //
             // grpSteps
             //
             grpSteps.Controls.Add(lstSteps);
-            grpSteps.Location = new Point(338, 12);
+            grpSteps.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
+            grpSteps.Location = new Point(12, 402);
             grpSteps.Name = "grpSteps";
-            grpSteps.Size = new Size(450, 350);
+            grpSteps.Size = new Size(450, 280);
             grpSteps.TabIndex = 1;
             grpSteps.TabStop = false;
             grpSteps.Text = "Seçili Zincir Adımları";
             //
             // lstSteps
             //
+            lstSteps.Font = new Font("Consolas", 9F);
             lstSteps.FormattingEnabled = true;
-            lstSteps.ItemHeight = 15;
-            lstSteps.Location = new Point(6, 22);
+            lstSteps.ItemHeight = 16;
+            lstSteps.Location = new Point(10, 28);
             lstSteps.Name = "lstSteps";
-            lstSteps.Size = new Size(438, 319);
+            lstSteps.Size = new Size(430, 240);
             lstSteps.TabIndex = 0;
             //
             // grpControls
             //
+            grpControls.Controls.Add(btnStopAndEdit);
             grpControls.Controls.Add(btnDebug);
             grpControls.Controls.Add(btnStop);
             grpControls.Controls.Add(btnPause);
             grpControls.Controls.Add(btnPlay);
-            grpControls.Location = new Point(12, 368);
+            grpControls.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
+            grpControls.Location = new Point(12, 692);
             grpControls.Name = "grpControls";
-            grpControls.Size = new Size(320, 90);
+            grpControls.Size = new Size(450, 130);
             grpControls.TabIndex = 2;
             grpControls.TabStop = false;
             grpControls.Text = "Kontroller";
             //
             // btnPlay
             //
-            btnPlay.Font = new Font("Segoe UI", 12F, FontStyle.Bold);
-            btnPlay.Location = new Point(6, 22);
+            btnPlay.Font = new Font("Segoe UI", 11F, FontStyle.Bold);
+            btnPlay.Location = new Point(10, 28);
             btnPlay.Name = "btnPlay";
-            btnPlay.Size = new Size(75, 55);
+            btnPlay.Size = new Size(100, 48);
             btnPlay.TabIndex = 0;
             btnPlay.Text = "▶ Oynat";
             btnPlay.UseVisualStyleBackColor = true;
@@ -132,10 +153,10 @@ namespace MedulaOtomasyon
             // btnPause
             //
             btnPause.Enabled = false;
-            btnPause.Font = new Font("Segoe UI", 12F, FontStyle.Bold);
-            btnPause.Location = new Point(87, 22);
+            btnPause.Font = new Font("Segoe UI", 11F, FontStyle.Bold);
+            btnPause.Location = new Point(120, 28);
             btnPause.Name = "btnPause";
-            btnPause.Size = new Size(75, 55);
+            btnPause.Size = new Size(100, 48);
             btnPause.TabIndex = 1;
             btnPause.Text = "⏸ Duraklat";
             btnPause.UseVisualStyleBackColor = true;
@@ -144,10 +165,10 @@ namespace MedulaOtomasyon
             // btnStop
             //
             btnStop.Enabled = false;
-            btnStop.Font = new Font("Segoe UI", 12F, FontStyle.Bold);
-            btnStop.Location = new Point(168, 22);
+            btnStop.Font = new Font("Segoe UI", 11F, FontStyle.Bold);
+            btnStop.Location = new Point(230, 28);
             btnStop.Name = "btnStop";
-            btnStop.Size = new Size(70, 55);
+            btnStop.Size = new Size(100, 48);
             btnStop.TabIndex = 2;
             btnStop.Text = "⏹ Durdur";
             btnStop.UseVisualStyleBackColor = true;
@@ -156,22 +177,37 @@ namespace MedulaOtomasyon
             // btnDebug
             //
             btnDebug.Font = new Font("Segoe UI", 10F);
-            btnDebug.Location = new Point(244, 22);
+            btnDebug.Location = new Point(340, 28);
             btnDebug.Name = "btnDebug";
-            btnDebug.Size = new Size(70, 55);
+            btnDebug.Size = new Size(100, 48);
             btnDebug.TabIndex = 3;
             btnDebug.Text = "🐛 Debug";
             btnDebug.UseVisualStyleBackColor = true;
             btnDebug.Click += btnDebug_Click;
+            //
+            // btnStopAndEdit
+            //
+            btnStopAndEdit.BackColor = Color.FromArgb(255, 140, 0);
+            btnStopAndEdit.Enabled = false;
+            btnStopAndEdit.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
+            btnStopAndEdit.ForeColor = Color.White;
+            btnStopAndEdit.Location = new Point(10, 82);
+            btnStopAndEdit.Name = "btnStopAndEdit";
+            btnStopAndEdit.Size = new Size(430, 40);
+            btnStopAndEdit.TabIndex = 4;
+            btnStopAndEdit.Text = "⏹ Durdur ve Düzenle";
+            btnStopAndEdit.UseVisualStyleBackColor = false;
+            btnStopAndEdit.Click += btnStopAndEdit_Click;
             //
             // grpSpeed
             //
             grpSpeed.Controls.Add(rbFast);
             grpSpeed.Controls.Add(rbNormal);
             grpSpeed.Controls.Add(rbSlow);
-            grpSpeed.Location = new Point(12, 464);
+            grpSpeed.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
+            grpSpeed.Location = new Point(12, 832);
             grpSpeed.Name = "grpSpeed";
-            grpSpeed.Size = new Size(155, 90);
+            grpSpeed.Size = new Size(220, 105);
             grpSpeed.TabIndex = 3;
             grpSpeed.TabStop = false;
             grpSpeed.Text = "Hız";
@@ -179,9 +215,10 @@ namespace MedulaOtomasyon
             // rbSlow
             //
             rbSlow.AutoSize = true;
-            rbSlow.Location = new Point(6, 22);
+            rbSlow.Font = new Font("Segoe UI", 10F);
+            rbSlow.Location = new Point(10, 28);
             rbSlow.Name = "rbSlow";
-            rbSlow.Size = new Size(114, 19);
+            rbSlow.Size = new Size(140, 23);
             rbSlow.TabIndex = 0;
             rbSlow.Text = "🐌 Yavaş (2000ms)";
             rbSlow.UseVisualStyleBackColor = true;
@@ -190,9 +227,10 @@ namespace MedulaOtomasyon
             //
             rbNormal.AutoSize = true;
             rbNormal.Checked = true;
-            rbNormal.Location = new Point(6, 44);
+            rbNormal.Font = new Font("Segoe UI", 10F);
+            rbNormal.Location = new Point(10, 52);
             rbNormal.Name = "rbNormal";
-            rbNormal.Size = new Size(130, 19);
+            rbNormal.Size = new Size(159, 23);
             rbNormal.TabIndex = 1;
             rbNormal.TabStop = true;
             rbNormal.Text = "🚶 Normal (1000ms)";
@@ -201,9 +239,10 @@ namespace MedulaOtomasyon
             // rbFast
             //
             rbFast.AutoSize = true;
-            rbFast.Location = new Point(6, 66);
+            rbFast.Font = new Font("Segoe UI", 10F);
+            rbFast.Location = new Point(10, 76);
             rbFast.Name = "rbFast";
-            rbFast.Size = new Size(85, 19);
+            rbFast.Size = new Size(105, 23);
             rbFast.TabIndex = 2;
             rbFast.Text = "🚀 Hızlı (0ms)";
             rbFast.UseVisualStyleBackColor = true;
@@ -213,9 +252,10 @@ namespace MedulaOtomasyon
             grpErrorHandling.Controls.Add(rbSkip);
             grpErrorHandling.Controls.Add(rbRetry);
             grpErrorHandling.Controls.Add(rbStop);
-            grpErrorHandling.Location = new Point(173, 464);
+            grpErrorHandling.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
+            grpErrorHandling.Location = new Point(242, 832);
             grpErrorHandling.Name = "grpErrorHandling";
-            grpErrorHandling.Size = new Size(159, 90);
+            grpErrorHandling.Size = new Size(220, 105);
             grpErrorHandling.TabIndex = 4;
             grpErrorHandling.TabStop = false;
             grpErrorHandling.Text = "Hata Durumunda";
@@ -224,9 +264,10 @@ namespace MedulaOtomasyon
             //
             rbStop.AutoSize = true;
             rbStop.Checked = true;
-            rbStop.Location = new Point(6, 22);
+            rbStop.Font = new Font("Segoe UI", 10F);
+            rbStop.Location = new Point(10, 28);
             rbStop.Name = "rbStop";
-            rbStop.Size = new Size(76, 19);
+            rbStop.Size = new Size(93, 23);
             rbStop.TabIndex = 0;
             rbStop.TabStop = true;
             rbStop.Text = "⏹ Durdur";
@@ -235,9 +276,10 @@ namespace MedulaOtomasyon
             // rbRetry
             //
             rbRetry.AutoSize = true;
-            rbRetry.Location = new Point(6, 44);
+            rbRetry.Font = new Font("Segoe UI", 10F);
+            rbRetry.Location = new Point(10, 52);
             rbRetry.Name = "rbRetry";
-            rbRetry.Size = new Size(106, 19);
+            rbRetry.Size = new Size(130, 23);
             rbRetry.TabIndex = 1;
             rbRetry.Text = "🔄 Tekrar Dene";
             rbRetry.UseVisualStyleBackColor = true;
@@ -245,9 +287,10 @@ namespace MedulaOtomasyon
             // rbSkip
             //
             rbSkip.AutoSize = true;
-            rbSkip.Location = new Point(6, 66);
+            rbSkip.Font = new Font("Segoe UI", 10F);
+            rbSkip.Location = new Point(10, 76);
             rbSkip.Name = "rbSkip";
-            rbSkip.Size = new Size(62, 19);
+            rbSkip.Size = new Size(76, 23);
             rbSkip.TabIndex = 2;
             rbSkip.Text = "⏭ Atla";
             rbSkip.UseVisualStyleBackColor = true;
@@ -256,9 +299,10 @@ namespace MedulaOtomasyon
             //
             grpOptions.Controls.Add(chkSaveLog);
             grpOptions.Controls.Add(chkScreenshot);
-            grpOptions.Location = new Point(338, 368);
+            grpOptions.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
+            grpOptions.Location = new Point(12, 947);
             grpOptions.Name = "grpOptions";
-            grpOptions.Size = new Size(200, 90);
+            grpOptions.Size = new Size(450, 90);
             grpOptions.TabIndex = 5;
             grpOptions.TabStop = false;
             grpOptions.Text = "Seçenekler";
@@ -266,9 +310,10 @@ namespace MedulaOtomasyon
             // chkScreenshot
             //
             chkScreenshot.AutoSize = true;
-            chkScreenshot.Location = new Point(6, 22);
+            chkScreenshot.Font = new Font("Segoe UI", 10F);
+            chkScreenshot.Location = new Point(10, 28);
             chkScreenshot.Name = "chkScreenshot";
-            chkScreenshot.Size = new Size(176, 19);
+            chkScreenshot.Size = new Size(215, 23);
             chkScreenshot.TabIndex = 0;
             chkScreenshot.Text = "📸 Her adımda screenshot al";
             chkScreenshot.UseVisualStyleBackColor = true;
@@ -278,9 +323,10 @@ namespace MedulaOtomasyon
             chkSaveLog.AutoSize = true;
             chkSaveLog.Checked = true;
             chkSaveLog.CheckState = CheckState.Checked;
-            chkSaveLog.Location = new Point(6, 44);
+            chkSaveLog.Font = new Font("Segoe UI", 10F);
+            chkSaveLog.Location = new Point(10, 54);
             chkSaveLog.Name = "chkSaveLog";
-            chkSaveLog.Size = new Size(142, 19);
+            chkSaveLog.Size = new Size(173, 23);
             chkSaveLog.TabIndex = 1;
             chkSaveLog.Text = "💾 Execution log kaydet";
             chkSaveLog.UseVisualStyleBackColor = true;
@@ -290,9 +336,10 @@ namespace MedulaOtomasyon
             grpProgress.Controls.Add(lblProgress);
             grpProgress.Controls.Add(progressBar);
             grpProgress.Controls.Add(lblCurrentStep);
-            grpProgress.Location = new Point(544, 368);
+            grpProgress.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
+            grpProgress.Location = new Point(12, 1047);
             grpProgress.Name = "grpProgress";
-            grpProgress.Size = new Size(244, 90);
+            grpProgress.Size = new Size(450, 105);
             grpProgress.TabIndex = 6;
             grpProgress.TabStop = false;
             grpProgress.Text = "İlerleme";
@@ -300,26 +347,27 @@ namespace MedulaOtomasyon
             // lblCurrentStep
             //
             lblCurrentStep.AutoSize = true;
-            lblCurrentStep.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
-            lblCurrentStep.Location = new Point(6, 22);
+            lblCurrentStep.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
+            lblCurrentStep.Location = new Point(10, 28);
             lblCurrentStep.Name = "lblCurrentStep";
-            lblCurrentStep.Size = new Size(109, 15);
+            lblCurrentStep.Size = new Size(131, 19);
             lblCurrentStep.TabIndex = 0;
             lblCurrentStep.Text = "Şu anda: Hazır...";
             //
             // progressBar
             //
-            progressBar.Location = new Point(6, 40);
+            progressBar.Location = new Point(10, 50);
             progressBar.Name = "progressBar";
-            progressBar.Size = new Size(232, 23);
+            progressBar.Size = new Size(430, 26);
             progressBar.TabIndex = 1;
             //
             // lblProgress
             //
             lblProgress.AutoSize = true;
-            lblProgress.Location = new Point(6, 66);
+            lblProgress.Font = new Font("Segoe UI", 10F);
+            lblProgress.Location = new Point(10, 79);
             lblProgress.Name = "lblProgress";
-            lblProgress.Size = new Size(88, 15);
+            lblProgress.Size = new Size(108, 19);
             lblProgress.TabIndex = 2;
             lblProgress.Text = "Progress: 0/0 (0%)";
             //
@@ -327,9 +375,10 @@ namespace MedulaOtomasyon
             //
             grpLog.Controls.Add(btnClearLog);
             grpLog.Controls.Add(txtLog);
-            grpLog.Location = new Point(12, 560);
+            grpLog.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
+            grpLog.Location = new Point(12, 1162);
             grpLog.Name = "grpLog";
-            grpLog.Size = new Size(776, 200);
+            grpLog.Size = new Size(450, 200);
             grpLog.TabIndex = 7;
             grpLog.TabStop = false;
             grpLog.Text = "Execution Log";
@@ -337,21 +386,22 @@ namespace MedulaOtomasyon
             // txtLog
             //
             txtLog.BackColor = Color.Black;
-            txtLog.Font = new Font("Consolas", 9F);
+            txtLog.Font = new Font("Consolas", 9.5F);
             txtLog.ForeColor = Color.LightGreen;
-            txtLog.Location = new Point(6, 22);
+            txtLog.Location = new Point(10, 28);
             txtLog.Multiline = true;
             txtLog.Name = "txtLog";
             txtLog.ReadOnly = true;
             txtLog.ScrollBars = ScrollBars.Vertical;
-            txtLog.Size = new Size(764, 136);
+            txtLog.Size = new Size(430, 130);
             txtLog.TabIndex = 0;
             //
             // btnClearLog
             //
-            btnClearLog.Location = new Point(6, 164);
+            btnClearLog.Font = new Font("Segoe UI", 10F);
+            btnClearLog.Location = new Point(10, 165);
             btnClearLog.Name = "btnClearLog";
-            btnClearLog.Size = new Size(100, 25);
+            btnClearLog.Size = new Size(120, 28);
             btnClearLog.TabIndex = 1;
             btnClearLog.Text = "Temizle";
             btnClearLog.UseVisualStyleBackColor = true;
@@ -361,7 +411,8 @@ namespace MedulaOtomasyon
             //
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(800, 772);
+            AutoScroll = true;
+            ClientSize = new Size(490, 1060);
             Controls.Add(grpLog);
             Controls.Add(grpProgress);
             Controls.Add(grpOptions);
@@ -370,10 +421,11 @@ namespace MedulaOtomasyon
             Controls.Add(grpControls);
             Controls.Add(grpSteps);
             Controls.Add(grpChainList);
-            FormBorderStyle = FormBorderStyle.FixedDialog;
+            FormBorderStyle = FormBorderStyle.SizableToolWindow;
             MaximizeBox = false;
+            MinimumSize = new Size(490, 600);
             Name = "TaskChainPlayerForm";
-            StartPosition = FormStartPosition.CenterScreen;
+            StartPosition = FormStartPosition.Manual;
             Text = "Görev Zinciri Oynatıcı";
             Load += TaskChainPlayerForm_Load;
             grpChainList.ResumeLayout(false);
@@ -397,12 +449,14 @@ namespace MedulaOtomasyon
         private GroupBox grpChainList;
         private ListBox lstChains;
         private Button btnRefresh;
+        private Button btnEditChain;
         private GroupBox grpSteps;
         private ListBox lstSteps;
         private GroupBox grpControls;
         private Button btnPlay;
         private Button btnPause;
         private Button btnStop;
+        private Button btnStopAndEdit;
         private Button btnDebug;
         private GroupBox grpSpeed;
         private RadioButton rbSlow;

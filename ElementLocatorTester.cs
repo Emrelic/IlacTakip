@@ -233,8 +233,67 @@ public class ElementLocatorTester
             });
         }
 
-        // 9. Playwright Selector
-        if (!string.IsNullOrEmpty(elementInfo.PlaywrightSelector))
+        // 9. Playwright Selectors (JSON format - Smart Element Recorder)
+        if (elementInfo.OtherAttributes != null &&
+            elementInfo.OtherAttributes.TryGetValue("PlaywrightSelectorsJson", out var selectorsJson) &&
+            !string.IsNullOrEmpty(selectorsJson))
+        {
+            try
+            {
+                var selectors = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(selectorsJson);
+                if (selectors != null)
+                {
+                    // RowIndex bilgisi al
+                    int? rowIndex = null;
+                    if (elementInfo.OtherAttributes.TryGetValue("PlaywrightRowIndex", out var rowIndexStr) &&
+                        int.TryParse(rowIndexStr, out var rowIndexValue))
+                    {
+                        rowIndex = rowIndexValue;
+                    }
+
+                    // TableSelector bilgisi al
+                    string? tableSelector = null;
+                    elementInfo.OtherAttributes.TryGetValue("PlaywrightTableSelector", out tableSelector);
+
+                    // Her selector için bir strateji oluştur
+                    foreach (var kvp in selectors)
+                    {
+                        if (string.IsNullOrWhiteSpace(kvp.Value))
+                            continue;
+
+                        var properties = new Dictionary<string, string>
+                        {
+                            ["SelectorKind"] = kvp.Key,
+                            ["Selector"] = kvp.Value
+                        };
+
+                        if (rowIndex.HasValue && rowIndex.Value >= 0)
+                        {
+                            properties["RowIndex"] = rowIndex.Value.ToString();
+                        }
+
+                        if (!string.IsNullOrEmpty(tableSelector))
+                        {
+                            properties["TableSelector"] = tableSelector;
+                        }
+
+                        strategies.Add(new ElementLocatorStrategy
+                        {
+                            Name = $"Playwright {kvp.Key}",
+                            Description = $"Playwright selector ({kvp.Key}): {kvp.Value}",
+                            Type = LocatorType.PlaywrightSelector,
+                            Properties = properties
+                        });
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Log($"[GenerateStrategies] PlaywrightSelectorsJson parse hatası: {ex.Message}");
+            }
+        }
+        // Fallback: Eski format PlaywrightSelector (backward compatibility)
+        else if (!string.IsNullOrEmpty(elementInfo.PlaywrightSelector))
         {
             strategies.Add(new ElementLocatorStrategy
             {
@@ -243,7 +302,7 @@ public class ElementLocatorTester
                 Type = LocatorType.PlaywrightSelector,
                 Properties = new Dictionary<string, string>
                 {
-                    ["PlaywrightSelector"] = elementInfo.PlaywrightSelector
+                    ["Selector"] = elementInfo.PlaywrightSelector
                 }
             });
         }
@@ -463,7 +522,7 @@ public class ElementLocatorTester
                 return FindByHtmlId(strategy.Properties["HtmlId"], searchRoot);
 
             case LocatorType.PlaywrightSelector:
-                return FindByPlaywrightSelector(strategy.Properties["PlaywrightSelector"], searchRoot);
+                return FindByPlaywrightSelector(strategy, searchRoot);
 
             case LocatorType.Coordinates:
                 // Koordinat araması searchRoot'tan bağımsızdır
@@ -507,8 +566,9 @@ public class ElementLocatorTester
                 DebugLogger.Log("[FindTargetContainer] 🚀 INDEX bazlı hızlı arama yapılıyor (Direct Children Only)...");
                 try
                 {
-                    var children = targetWindow.FindAll(TreeScope.Children, Condition.TrueCondition);
-                    DebugLogger.Log($"[FindTargetContainer] Window'un {children.Count} direct child'ı bulundu");
+                    var children = FindAllWithRawView(targetWindow, TreeScope.Children, Condition.TrueCondition);
+                    DebugLogger.Log($"[FindTargetContainer] Window'un {(children?.Count ?? 0)} direct child'ı bulundu");
+                    if (children == null) return targetWindow;
 
                     int index = 0;
                     foreach (AutomationElement child in children)
@@ -630,10 +690,46 @@ public class ElementLocatorTester
     /// <summary>
     /// UIElementInfo'dan hedef pencereyi bulur
     /// </summary>
+    /// <summary>
+    /// Element'in kendi programımıza ait olup olmadığını kontrol eder
+    /// </summary>
+    private static bool IsSelfProgramElement(AutomationElement element)
+    {
+        try
+        {
+            var currentProcessId = Process.GetCurrentProcess().Id;
+            var elementProcessId = element.Current.ProcessId;
+
+            if (elementProcessId == currentProcessId)
+            {
+                DebugLogger.Log($"[FILTER] ⚠ Kendi programımızın elementi tespit edildi, filtreleniyor: {element.Current.Name}");
+                return true;
+            }
+
+            // Window kontrolü - pencere adı kontrolü
+            var windowName = element.Current.Name ?? string.Empty;
+            if (windowName.Contains("Görev Zinciri", StringComparison.OrdinalIgnoreCase) ||
+                windowName.Contains("Görev Kaydedici", StringComparison.OrdinalIgnoreCase) ||
+                windowName.Contains("TaskChain", StringComparison.OrdinalIgnoreCase))
+            {
+                DebugLogger.Log($"[FILTER] ⚠ Kendi programımızın penceresi tespit edildi (isim), filtreleniyor: {windowName}");
+                return true;
+            }
+
+            return false;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private static AutomationElement? FindTargetWindow(UIElementInfo elementInfo)
     {
         try
         {
+            var currentProcessId = Process.GetCurrentProcess().Id;
+
             if (!string.IsNullOrEmpty(elementInfo.WindowTitle))
             {
                 DebugLogger.Log($"[FindTargetWindow] WindowTitle ile arama: {elementInfo.WindowTitle}");
@@ -642,6 +738,13 @@ public class ElementLocatorTester
 
                 if (window != null)
                 {
+                    // Kendi programımızı filtrele
+                    if (IsSelfProgramElement(window))
+                    {
+                        DebugLogger.Log($"[FindTargetWindow] ✗ Kendi programımız, filtrelendi!");
+                        return null;
+                    }
+
                     DebugLogger.Log($"[FindTargetWindow] ✓ Pencere bulundu: {window.Current.Name}");
                 }
                 else
@@ -654,8 +757,17 @@ public class ElementLocatorTester
             else if (elementInfo.WindowProcessId.HasValue)
             {
                 DebugLogger.Log($"[FindTargetWindow] ProcessId ile arama: {elementInfo.WindowProcessId.Value}");
-                var windows = AutomationElement.RootElement.FindAll(TreeScope.Children,
+
+                // Kendi processimizi filtrele
+                if (elementInfo.WindowProcessId.Value == currentProcessId)
+                {
+                    DebugLogger.Log($"[FindTargetWindow] ✗ Kendi programımızın ProcessId'si, filtrelendi!");
+                    return null;
+                }
+
+                var windows = FindAllWithRawView(AutomationElement.RootElement, TreeScope.Children,
                     new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Window));
+                if (windows == null) return null;
 
                 foreach (AutomationElement window in windows)
                 {
@@ -683,7 +795,7 @@ public class ElementLocatorTester
     #region Find Methods
 
     /// <summary>
-    /// Timeout ile element arama (3 saniye)
+    /// Timeout ile element arama (3 saniye) - Kendi programımızın elementlerini filtreler
     /// </summary>
     private static AutomationElement? FindWithTimeout(AutomationElement root, TreeScope scope, Condition condition, int timeoutMs = 3000)
     {
@@ -696,7 +808,18 @@ public class ElementLocatorTester
             {
                 try
                 {
-                    return root.FindFirst(scope, condition);
+                    // RawView kullan - IsContentElement: false elementleri de bul
+                    // TitleBar butonları gibi UI elementleri için gerekli
+                    var cacheRequest = new CacheRequest();
+                    cacheRequest.TreeFilter = Automation.RawViewCondition;
+                    cacheRequest.Add(AutomationElement.NameProperty);
+                    cacheRequest.Add(AutomationElement.AutomationIdProperty);
+                    cacheRequest.Add(AutomationElement.ControlTypeProperty);
+
+                    using (cacheRequest.Activate())
+                    {
+                        return root.FindFirst(scope, condition);
+                    }
                 }
                 catch
                 {
@@ -707,12 +830,43 @@ public class ElementLocatorTester
             if (task.Wait(timeoutMs))
             {
                 result = task.Result;
+
+                // Kendi programımızın elementlerini filtrele
+                if (result != null && IsSelfProgramElement(result))
+                {
+                    DebugLogger.Log($"    [FindWithTimeout] ⚠ Element kendi programımıza ait, filtrelendi: {result.Current.Name}");
+                    result = null;
+                }
             }
         }
         catch { }
 
         stopwatch.Stop();
         return result;
+    }
+
+    /// <summary>
+    /// RawView ile FindAll - IsContentElement: false elementleri de bulur
+    /// </summary>
+    private static AutomationElementCollection? FindAllWithRawView(AutomationElement root, TreeScope scope, Condition condition)
+    {
+        try
+        {
+            var cacheRequest = new CacheRequest();
+            cacheRequest.TreeFilter = Automation.RawViewCondition;
+            cacheRequest.Add(AutomationElement.NameProperty);
+            cacheRequest.Add(AutomationElement.AutomationIdProperty);
+            cacheRequest.Add(AutomationElement.ControlTypeProperty);
+
+            using (cacheRequest.Activate())
+            {
+                return root.FindAll(scope, condition);
+            }
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private static AutomationElement? FindByAutomationId(string automationId, AutomationElement searchRoot)
@@ -790,12 +944,12 @@ public class ElementLocatorTester
                 new PropertyCondition(AutomationElement.ControlTypeProperty, controlType)
             );
 
-            // Tüm matching elementleri bul
+            // Tüm matching elementleri bul - RawView kullan
             var task = Task.Run(() =>
             {
                 try
                 {
-                    return searchRoot.FindAll(TreeScope.Descendants, condition);
+                    return FindAllWithRawView(searchRoot, TreeScope.Descendants, condition);
                 }
                 catch
                 {
@@ -815,7 +969,8 @@ public class ElementLocatorTester
                         var parent = TreeWalker.RawViewWalker.GetParent(element);
                         if (parent != null)
                         {
-                            var siblings = parent.FindAll(TreeScope.Children, Condition.TrueCondition);
+                            var siblings = FindAllWithRawView(parent, TreeScope.Children, Condition.TrueCondition);
+                            if (siblings == null) continue;
                             for (int i = 0; i < siblings.Count; i++)
                             {
                                 if (Automation.Compare(siblings[i], element))
@@ -850,8 +1005,9 @@ public class ElementLocatorTester
 
             if (parent == null) return null;
 
-            // Parent'ın children'ını al
-            var children = parent.FindAll(TreeScope.Children, Condition.TrueCondition);
+            // Parent'ın children'ını al - RawView kullan
+            var children = FindAllWithRawView(parent, TreeScope.Children, Condition.TrueCondition);
+            if (children == null) return null;
 
             // Index'teki child'ı bul ve name kontrolü yap
             foreach (AutomationElement child in children)
@@ -862,7 +1018,8 @@ public class ElementLocatorTester
                     var childParent = TreeWalker.RawViewWalker.GetParent(child);
                     if (childParent != null && Automation.Compare(childParent, parent))
                     {
-                        var siblings = childParent.FindAll(TreeScope.Children, Condition.TrueCondition);
+                        var siblings = FindAllWithRawView(childParent, TreeScope.Children, Condition.TrueCondition);
+                        if (siblings == null) continue;
                         for (int i = 0; i < siblings.Count; i++)
                         {
                             if (Automation.Compare(siblings[i], child))
@@ -916,7 +1073,7 @@ public class ElementLocatorTester
             {
                 try
                 {
-                    return searchRoot.FindAll(TreeScope.Descendants, condition);
+                    return FindAllWithRawView(searchRoot, TreeScope.Descendants, condition);
                 }
                 catch
                 {
@@ -994,8 +1151,9 @@ public class ElementLocatorTester
                     {
                         var controlType = controlTypeMatch.Groups[1].Value;
 
-                        // Bu seviyeyi ControlType ile bul (ilk eşleşeni al)
-                        var children = current.FindAll(TreeScope.Children, Condition.TrueCondition);
+                        // Bu seviyeyi ControlType ile bul (ilk eşleşeni al) - RawView kullan
+                        var children = FindAllWithRawView(current, TreeScope.Children, Condition.TrueCondition);
+                        if (children == null) return null;
                         bool found = false;
 
                         foreach (AutomationElement child in children)
@@ -1035,7 +1193,8 @@ public class ElementLocatorTester
                         return null;
                     }
 
-                    var children = current.FindAll(TreeScope.Children, Condition.TrueCondition);
+                    var children = FindAllWithRawView(current, TreeScope.Children, Condition.TrueCondition);
+                    if (children == null) return null;
 
                     if (index >= children.Count || index < 0)
                     {
@@ -1128,9 +1287,77 @@ public class ElementLocatorTester
         return FindByName(htmlId, searchRoot);
     }
 
-    private static AutomationElement? FindByPlaywrightSelector(string selector, AutomationElement searchRoot)
+    private static AutomationElement? FindByPlaywrightSelector(ElementLocatorStrategy strategy, AutomationElement searchRoot)
     {
-        // Playwright selector'den bilgi çıkar
+        try
+        {
+            // SelectorKind kontrolü yap
+            if (!strategy.Properties.TryGetValue("SelectorKind", out var selectorKind))
+            {
+                // SelectorKind yoksa basit selector string'i kullan
+                if (strategy.Properties.TryGetValue("Selector", out var selector))
+                {
+                    return FindBySimplePlaywrightSelector(selector, searchRoot);
+                }
+                return null;
+            }
+
+            var kind = selectorKind?.Trim().ToLowerInvariant() ?? string.Empty;
+            DebugLogger.Log($"[PlaywrightSelector] SelectorKind: {kind}");
+
+            // SelectorKind'a göre işlem yap
+            switch (kind)
+            {
+                case "table-row":
+                case "row-index":
+                    // Table row için özel işlem - RowIndex bilgisini kullan
+                    if (strategy.Properties.TryGetValue("RowIndex", out var rowIndexStr) &&
+                        int.TryParse(rowIndexStr, out var rowIndex))
+                    {
+                        DebugLogger.Log($"[PlaywrightSelector] Table row aranıyor, RowIndex: {rowIndex}");
+                        return FindByTableRowIndex(rowIndex, searchRoot);
+                    }
+                    break;
+
+                case "css":
+                    if (strategy.Properties.TryGetValue("Selector", out var cssSelector))
+                    {
+                        DebugLogger.Log($"[PlaywrightSelector] CSS selector: {cssSelector}");
+                        return FindByCssSelector(cssSelector, searchRoot);
+                    }
+                    break;
+
+                case "xpath":
+                    if (strategy.Properties.TryGetValue("Selector", out var xpathSelector))
+                    {
+                        DebugLogger.Log($"[PlaywrightSelector] XPath selector: {xpathSelector}");
+                        return FindByXPath(xpathSelector, searchRoot);
+                    }
+                    break;
+
+                case "text":
+                    if (strategy.Properties.TryGetValue("Selector", out var textContent))
+                    {
+                        DebugLogger.Log($"[PlaywrightSelector] Text content: {textContent}");
+                        return FindByName(textContent, searchRoot);
+                    }
+                    break;
+
+                default:
+                    DebugLogger.Log($"[PlaywrightSelector] Bilinmeyen SelectorKind: {kind}");
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            DebugLogger.Log($"[PlaywrightSelector] Hata: {ex.Message}");
+        }
+
+        return null;
+    }
+
+    private static AutomationElement? FindBySimplePlaywrightSelector(string selector, AutomationElement searchRoot)
+    {
         try
         {
             // ID: #myButton
@@ -1155,6 +1382,82 @@ public class ElementLocatorTester
             }
         }
         catch { }
+
+        return null;
+    }
+
+    private static AutomationElement? FindByTableRowIndex(int rowIndex, AutomationElement searchRoot)
+    {
+        try
+        {
+            DebugLogger.Log($"[TableRow] Satır {rowIndex} aranıyor...");
+
+            // Önce TABLE elementini bul (eğer TableSelector bilgisi varsa)
+            // Şimdilik basit yaklaşım: Table ControlType ile tüm tabloları bul
+            var tableCondition = new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Table);
+            var tables = FindAllWithRawView(searchRoot, TreeScope.Descendants, tableCondition);
+
+            DebugLogger.Log($"[TableRow] {(tables?.Count ?? 0)} tablo bulundu");
+            if (tables == null || tables.Count == 0)
+            {
+                DebugLogger.Log("[TableRow] ⚠ Tablo bulunamadı, fallback'e geçiliyor...");
+            }
+            else
+            {
+                // Her tabloda satır ara
+                foreach (AutomationElement table in tables)
+            {
+                try
+                {
+                    DebugLogger.Log($"[TableRow] Tablo aranıyor: {table.Current.Name ?? "N/A"}");
+
+                    // Tablonun child elementlerini al (satırlar)
+                    var walker = TreeWalker.RawViewWalker;
+                    var row = walker.GetFirstChild(table);
+                    int currentIndex = 0;
+
+                    while (row != null)
+                    {
+                        if (currentIndex == rowIndex)
+                        {
+                            DebugLogger.Log($"[TableRow] ✓ Satır bulundu (index {rowIndex}): {row.Current.Name ?? "N/A"}");
+                            return row;
+                        }
+
+                        currentIndex++;
+                        row = walker.GetNextSibling(row);
+                    }
+
+                    DebugLogger.Log($"[TableRow] Bu tabloda {currentIndex} satır bulundu, index {rowIndex} yok");
+                }
+                catch (Exception ex)
+                {
+                    DebugLogger.Log($"[TableRow] Tablo tarama hatası: {ex.Message}");
+                }
+            }
+            }
+
+            // FALLBACK: Table bulunamadıysa, tüm Custom elementlerden index'e göre al
+            DebugLogger.Log("[TableRow] ⚠ Table bulunamadı, Custom elementlerden aranıyor (fallback)...");
+            var customCondition = new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Custom);
+            var customs = FindAllWithRawView(searchRoot, TreeScope.Descendants, customCondition);
+
+            DebugLogger.Log($"[TableRow] {(customs?.Count ?? 0)} custom element bulundu");
+            if (customs == null) return null;
+
+            if (rowIndex >= 0 && rowIndex < customs.Count)
+            {
+                var element = customs[rowIndex];
+                DebugLogger.Log($"[TableRow] ⚠ Fallback: Custom element bulundu: {element.Current.Name ?? "N/A"}");
+                return element;
+            }
+
+            DebugLogger.Log($"[TableRow] ✗ RowIndex {rowIndex} hiçbir yerde bulunamadı");
+        }
+        catch (Exception ex)
+        {
+            DebugLogger.Log($"[TableRow] Hata: {ex.Message}");
+        }
 
         return null;
     }

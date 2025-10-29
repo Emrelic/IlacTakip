@@ -174,8 +174,9 @@ partial class TaskChainRecorderForm
         txtChainName.PlaceholderText = "Görev zinciri adını girin...";
 
         // lblStepType
-        lblStepType.Text = "Görev Tipi";
+        lblStepType.Text = "Görev Tipi: Lütfen Seçiniz";
         lblStepType.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
+        lblStepType.ForeColor = Color.Gray;
         lblStepType.Location = new Point(15, 90);
         lblStepType.Size = new Size(430, 22);
 
@@ -190,7 +191,7 @@ partial class TaskChainRecorderForm
             "Tip 3: Sayfa Durum Kontrolü (Koşullu Dallanma)",
             "Tip 4: Döngü veya Bitiş Koşulu"
         });
-        cmbStepType.SelectedIndex = 0;
+        cmbStepType.SelectedIndex = -1; // Hiçbiri seçili değil
         cmbStepType.SelectedIndexChanged += cmbStepType_SelectedIndexChanged;
 
         // ==========================================

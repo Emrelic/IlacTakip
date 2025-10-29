@@ -32,13 +32,23 @@ public partial class TaskChainPlayerForm : Form
 
     private void TaskChainPlayerForm_Load(object? sender, EventArgs e)
     {
-        // Formu sağ alt köşede aç
+        // Formu sağ tarafta aç, üst kısım ekranda kalacak şekilde
         var workingArea = Screen.PrimaryScreen!.WorkingArea;
         this.StartPosition = FormStartPosition.Manual;
-        this.Location = new Point(
-            workingArea.Right - this.Width,
-            workingArea.Bottom - this.Height
-        );
+
+        // X koordinatı: Sağ kenar
+        int x = workingArea.Right - this.Width;
+
+        // Y koordinatı: Alt köşe ama üst kısım ekranda kalacak şekilde
+        int y = workingArea.Bottom - this.Height;
+
+        // Eğer form ekran yüksekliğinden uzunsa, üstten başlat
+        if (y < workingArea.Top)
+        {
+            y = workingArea.Top;
+        }
+
+        this.Location = new Point(x, y);
 
         LoadChains();
         Log("Görev Zinciri Oynatıcı hazır.");
@@ -478,11 +488,12 @@ public partial class TaskChainPlayerForm : Form
         {
             Text = "Hata Oluştu",
             Width = 450,
-            Height = 220,
+            Height = 180,
             StartPosition = FormStartPosition.Manual,
             FormBorderStyle = FormBorderStyle.FixedDialog,
             MaximizeBox = false,
-            MinimizeBox = false
+            MinimizeBox = false,
+            TopMost = true
         };
 
         // Dialog'u sağ alt köşede aç
@@ -496,14 +507,14 @@ public partial class TaskChainPlayerForm : Form
         {
             Text = $"Adım {step.StepNumber} sırasında hata oluştu:\n\n{errorMessage}\n\nNe yapmak istersiniz?",
             Location = new Point(10, 10),
-            Size = new Size(410, 80),
+            Size = new Size(410, 60),
             AutoSize = false
         };
 
         var btnStop = new Button
         {
             Text = "⏹ Durdur",
-            Location = new Point(10, 100),
+            Location = new Point(10, 80),
             Size = new Size(100, 40),
             DialogResult = DialogResult.Abort
         };
@@ -511,7 +522,7 @@ public partial class TaskChainPlayerForm : Form
         var btnRetry = new Button
         {
             Text = "🔄 Tekrar Dene",
-            Location = new Point(120, 100),
+            Location = new Point(120, 80),
             Size = new Size(100, 40),
             DialogResult = DialogResult.Retry
         };
@@ -519,21 +530,53 @@ public partial class TaskChainPlayerForm : Form
         var btnSkip = new Button
         {
             Text = "⏭ Atla",
-            Location = new Point(230, 100),
+            Location = new Point(230, 80),
             Size = new Size(100, 40),
             DialogResult = DialogResult.Ignore
         };
 
-        dialog.Controls.AddRange(new Control[] { lblMessage, btnStop, btnRetry, btnSkip });
+        var btnCancel = new Button
+        {
+            Text = "❌ İptal",
+            Location = new Point(340, 80),
+            Size = new Size(100, 40),
+            DialogResult = DialogResult.Cancel
+        };
+
+        dialog.Controls.AddRange(new Control[] { lblMessage, btnStop, btnRetry, btnSkip, btnCancel });
         dialog.AcceptButton = btnRetry;
+        dialog.CancelButton = btnCancel;
+
+        // Executor durumunu kontrol eden timer - dialog açıkken Stop basılırsa dialog'u otomatik kapat
+        var checkTimer = new System.Windows.Forms.Timer();
+        checkTimer.Interval = 100;
+        checkTimer.Tick += (s, e) =>
+        {
+            if (!_executor.IsRunning)
+            {
+                checkTimer.Stop();
+                dialog.DialogResult = DialogResult.Cancel;
+                dialog.Close();
+            }
+        };
+        checkTimer.Start();
 
         var result = dialog.ShowDialog();
+        checkTimer.Stop();
+        checkTimer.Dispose();
+
+        // Cancel durumunda executor'ı durdur
+        if (result == DialogResult.Cancel)
+        {
+            _executor.Stop();
+        }
 
         return result switch
         {
             DialogResult.Abort => ErrorAction.Stop,
             DialogResult.Retry => ErrorAction.Retry,
             DialogResult.Ignore => ErrorAction.Skip,
+            DialogResult.Cancel => ErrorAction.Stop,
             _ => ErrorAction.Stop
         };
     }

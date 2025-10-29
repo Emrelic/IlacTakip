@@ -17,7 +17,11 @@
       "Bash(Remove-Item \"C:\\Users\\ikizler1\\AndroidStudioProjects\\IlacTakip\\.git\\index.lock\" -Force -ErrorAction SilentlyContinue)",
       "Bash(git ls-tree:*)",
       "Bash(git log:*)",
-      "Bash(Select-String -Pattern \"error|warning|succeeded|failed\" -Context 0,2)"
+      "Bash(Select-String -Pattern \"error|warning|succeeded|failed\" -Context 0,2)",
+      "Bash(python -c:*)",
+      "Bash(git rm:*)",
+      "Bash(git filter-branch:*)",
+      "Bash(git reset:*)"
     ],
     "deny": [],
     "ask": []

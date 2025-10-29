@@ -1470,6 +1470,23 @@ namespace MedulaOtomasyon
                 Description = $"Generic: {element.Current.Name ?? element.Current.ClassName}"
             };
 
+            // Parent bilgilerini topla
+            try
+            {
+                var parent = TreeWalker.RawViewWalker.GetParent(element);
+                if (parent != null && parent.Current.ControlType != ControlType.Window)
+                {
+                    recorded.ParentAutomationId = parent.Current.AutomationId;
+                    recorded.ParentName = parent.Current.Name;
+                    recorded.ParentClassName = parent.Current.ClassName;
+                    recorded.ParentControlType = parent.Current.ControlType.ProgrammaticName;
+                }
+            }
+            catch
+            {
+                // Parent bilgisi alınamazsa devam et
+            }
+
             PopulateWindowInfo(recorded, element);
             return recorded;
         }
@@ -2474,6 +2491,22 @@ namespace MedulaOtomasyon
                 uiElement.WindowProcessId = recordedElement.HtmlInfo.BrowserProcessId;
             }
 
+            // Parent/Container bilgilerini ekle
+            // Parent Window değilse Container olarak işle
+            if (!string.IsNullOrEmpty(recordedElement.ParentControlType) &&
+                recordedElement.ParentControlType != "ControlType.Window")
+            {
+                uiElement.ContainerAutomationId = recordedElement.ParentAutomationId;
+                uiElement.ContainerName = recordedElement.ParentName;
+                uiElement.ContainerClassName = recordedElement.ParentClassName;
+                uiElement.ContainerControlType = recordedElement.ParentControlType;
+            }
+
+            // ParentAutomationId ve ParentName'i de set et (backwards compatibility)
+            uiElement.ParentAutomationId = recordedElement.ParentAutomationId;
+            uiElement.ParentName = recordedElement.ParentName;
+            uiElement.ParentClassName = recordedElement.ParentClassName;
+
             // Tablo bilgilerini ekle (varsa)
             if (recordedElement.TableInfo != null)
             {
@@ -2905,6 +2938,12 @@ namespace MedulaOtomasyon
         public string? Name { get; set; }
         public string? ClassName { get; set; }
         public string? ControlType { get; set; }
+
+        // Parent/Container bilgileri
+        public string? ParentAutomationId { get; set; }
+        public string? ParentName { get; set; }
+        public string? ParentClassName { get; set; }
+        public string? ParentControlType { get; set; }
 
         // Tablo bilgileri
         public TableInfo? TableInfo { get; set; }
