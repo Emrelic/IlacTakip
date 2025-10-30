@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -6,6 +7,7 @@ using System.Threading.Tasks;
 using System.Windows.Automation;
 using System.Runtime.InteropServices;
 using Microsoft.VisualBasic;
+using System.Text;
 
 namespace MedulaOtomasyon;
 
@@ -36,6 +38,7 @@ public partial class TaskChainRecorderForm : Form
     public TaskChainRecorderForm()
     {
         InitializeComponent();
+        UpdateElementContextSummary(null);
         this.TopMost = true; // Her zaman en üstte tut
         _database = new TaskChainDatabase();
         _currentChain = new TaskChain
@@ -378,6 +381,7 @@ public partial class TaskChainRecorderForm : Form
 
                 // RecordedElement'i UIElementInfo'ya dönüştür
                 _currentStep.UIElement = SmartElementRecorder.ConvertToUIElementInfo(_lastRecordedElement);
+                UpdateElementContextSummary(_currentStep.UIElement, _selectedSmartStrategy);
                 _currentStep.SelectedStrategy = _selectedSmartStrategy;
 
                 LogMessage($"✅ Element dönüştürüldü: {_currentStep.UIElement.Name ?? _currentStep.UIElement.ClassName}");
@@ -636,6 +640,7 @@ public partial class TaskChainRecorderForm : Form
         if (_currentStep.UIElement == null && strategy.RecordedElement != null)
         {
             _currentStep.UIElement = SmartElementRecorder.ConvertToUIElementInfo(strategy.RecordedElement);
+            UpdateElementContextSummary(_currentStep.UIElement, strategy);
             LogMessage("ℹ️ UIElement bilgisi akıllı kayıttan dolduruldu.");
         }
 
@@ -884,8 +889,8 @@ public partial class TaskChainRecorderForm : Form
         _selectedSmartStrategy = null;
         _availableStrategies.Clear();
         _smartStrategies.Clear();
-        lstStrategies.Items.Clear();
-        lstSmartStrategies.Items.Clear();
+        RefreshStrategyListBox();
+        RefreshSmartStrategyListBox();
 
         if (lblTestResult != null)
         {
@@ -1101,7 +1106,6 @@ public partial class TaskChainRecorderForm : Form
         // Önceki strateji listesini ve seçimi temizle
         _availableStrategies.Clear();
         _selectedStrategy = null;
-        lstStrategies.Items.Clear();
         lblSelectedStrategy.Text = "Seçili Strateji: -";
         lblSelectedStrategy.ForeColor = Color.Black;
         lblTestResult.Text = "";
@@ -1257,6 +1261,7 @@ public partial class TaskChainRecorderForm : Form
 
         // Element bilgilerini current step'e kaydet
         _currentStep.UIElement = elementInfo;
+        UpdateElementContextSummary(elementInfo);
 
         LogMessage($"✓ Element yakalandı: {elementInfo.Name} ({elementInfo.ControlType})");
         LogMessage($"  FrameworkId: {elementInfo.FrameworkId}");
@@ -1286,13 +1291,7 @@ public partial class TaskChainRecorderForm : Form
 
         // Stratejileri üret
         _availableStrategies = ElementLocatorTester.GenerateStrategies(elementInfo);
-
-        // ListBox'ı temizle ve stratejileri ekle
-        lstStrategies.Items.Clear();
-        foreach (var strategy in _availableStrategies)
-        {
-            lstStrategies.Items.Add($"⚪ {strategy.Name} - {strategy.Description}");
-        }
+        RefreshStrategyListBox();
 
         // Stratejiler sekmesine geç
         tabControl.SelectedTab = tabStrategies;
@@ -1307,6 +1306,230 @@ public partial class TaskChainRecorderForm : Form
         {
             txtElementProperties.AppendText($"{label}: {value}{Environment.NewLine}");
         }
+    }
+
+    private void UpdateElementContextSummary(UIElementInfo? info, ElementLocatorStrategy? strategy = null)
+    {
+        if (txtElementContextSummary == null)
+        {
+            return;
+        }
+
+        if (info == null)
+        {
+            txtElementContextSummary.Text = "ℹ️ Henüz bir UI elementi seçilmedi.";
+            return;
+        }
+
+        var sb = new StringBuilder();
+        AppendContextLine(sb, "Sayfa", info.PageName ?? info.WindowTitle ?? info.WindowName, info.NormalizedPageName ?? info.NormalizedWindowTitle);
+        AppendContextLine(sb, "Sekme", info.TabName, info.NormalizedTabName);
+        AppendContextLine(sb, "Bölüm", info.SectionName ?? info.ContainerName, info.NormalizedSectionName ?? info.NormalizedContainerName);
+        AppendContextLine(sb, "Placeholder", !string.IsNullOrWhiteSpace(info.Placeholder) ? info.Placeholder : info.HelpText, null);
+        AppendContextLine(sb, "Name", info.Name, info.NormalizedName);
+        AppendContextLine(sb, "AutomationId", info.AutomationId, null);
+        AppendContextLine(sb, "Class", info.ClassName, null);
+        AppendContextLine(sb, "ControlType", SimplifyControlType(info.ControlType), null);
+        AppendContextLine(sb, "ElementPath", Shorten(info.ElementPath), null);
+        AppendContextLine(sb, "TreePath", info.TreePath, null);
+        AppendContextLine(sb, "CSS", Shorten(info.CssSelector), null);
+        AppendContextLine(sb, "XPath", Shorten(info.XPath), null);
+
+        var rowIndex = info.OtherAttributes?.GetValueOrDefault("PlaywrightRowIndex")
+                        ?? info.OtherAttributes?.GetValueOrDefault("HtmlRowIndex")
+                        ?? info.OtherAttributes?.GetValueOrDefault("TableRowIndex")
+                        ?? info.DataAttributes?.GetValueOrDefault("row-index");
+        AppendContextLine(sb, "RowIndex", rowIndex, null);
+
+        var ancestorSummary = info.Ancestors?
+            .Take(3)
+            .Select(FormatAncestorDisplay)
+            .ToList();
+        AppendContextLine(sb, "Üst Zincir", ancestorSummary != null && ancestorSummary.Count > 0
+            ? string.Join(" > ", ancestorSummary)
+            : null, null);
+
+        if (strategy != null)
+        {
+            AppendContextLine(sb, "Strateji", strategy.Name, null);
+            AppendContextLine(sb, "Strateji Açıklaması", Shorten(strategy.Description), null);
+        }
+
+        txtElementContextSummary.Text = sb.ToString().TrimEnd();
+    }
+
+    private static void AppendContextLine(StringBuilder sb, string label, string? rawValue, string? normalizedValue)
+    {
+        sb.Append(label);
+        sb.Append(": ");
+        sb.AppendLine(BuildDisplayValue(rawValue, normalizedValue));
+    }
+
+    private static string BuildDisplayValue(string? rawValue, string? normalizedValue)
+    {
+        var raw = string.IsNullOrWhiteSpace(rawValue) ? null : rawValue.Trim();
+        var normalized = string.IsNullOrWhiteSpace(normalizedValue) ? null : normalizedValue.Trim();
+
+        if (normalized != null)
+        {
+            if (raw != null && !string.Equals(raw, normalized, StringComparison.Ordinal))
+            {
+                return $"{normalized} (gerçek: {raw})";
+            }
+
+            return normalized;
+        }
+
+        return raw ?? "-";
+    }
+
+    private static string FormatAncestorDisplay(AncestorInfo ancestor)
+    {
+        var label = SimplifyControlType(ancestor.ControlType);
+        var display = BuildDisplayValue(ancestor.Name, ancestor.NormalizedName);
+        if (string.IsNullOrWhiteSpace(label))
+        {
+            return display;
+        }
+
+        return $"{label}[{display}]";
+    }
+
+    private static string SimplifyControlType(string? controlType)
+    {
+        if (string.IsNullOrWhiteSpace(controlType))
+        {
+            return "-";
+        }
+
+        return controlType.Replace("ControlType.", "");
+    }
+
+    private static string Shorten(string? value, int maxLength = 80)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "-";
+        }
+
+        value = value.Trim();
+        return value.Length <= maxLength ? value : $"{value.Substring(0, maxLength - 3)}...";
+    }
+
+    private void RefreshStrategyListBox()
+    {
+        var selectedIndex = lstStrategies.SelectedIndex;
+        lstStrategies.BeginUpdate();
+        lstStrategies.Items.Clear();
+        foreach (var strategy in _availableStrategies)
+        {
+            lstStrategies.Items.Add(BuildStrategyDisplay(strategy));
+        }
+        lstStrategies.EndUpdate();
+        if (selectedIndex >= 0 && selectedIndex < lstStrategies.Items.Count)
+        {
+            lstStrategies.SelectedIndex = selectedIndex;
+        }
+        lstStrategies.Invalidate();
+    }
+
+    private void RefreshSmartStrategyListBox()
+    {
+        var selectedIndex = lstSmartStrategies.SelectedIndex;
+        lstSmartStrategies.BeginUpdate();
+        lstSmartStrategies.Items.Clear();
+        for (int i = 0; i < _smartStrategies.Count; i++)
+        {
+            lstSmartStrategies.Items.Add(BuildStrategyDisplay(_smartStrategies[i], i + 1));
+        }
+        lstSmartStrategies.EndUpdate();
+        if (selectedIndex >= 0 && selectedIndex < lstSmartStrategies.Items.Count)
+        {
+            lstSmartStrategies.SelectedIndex = selectedIndex;
+        }
+        lstSmartStrategies.Invalidate();
+    }
+
+    private string BuildStrategyDisplay(ElementLocatorStrategy strategy, int? ordinal = null)
+    {
+        var riskIcon = GetRiskIcon(strategy.RiskLevel);
+        var statusIcon = GetStatusIcon(strategy);
+        var durationText = strategy.TestDurationMs > 0 ? $" ({strategy.TestDurationMs}ms)" : "";
+        var description = strategy.Description;
+
+        if (!strategy.IsSuccessful && strategy.TestDurationMs > 0 && !string.IsNullOrEmpty(strategy.ErrorMessage))
+        {
+            description += $" [Hata: {strategy.ErrorMessage}]";
+        }
+
+        var prefix = ordinal.HasValue ? $"[{ordinal.Value}] " : string.Empty;
+        return $"{prefix}{riskIcon} {statusIcon} {strategy.Name} - {description}{durationText}";
+    }
+
+    private static string GetRiskIcon(LocatorRiskLevel risk) => risk switch
+    {
+        LocatorRiskLevel.Low => "🟢",
+        LocatorRiskLevel.Medium => "🟡",
+        LocatorRiskLevel.High => "🟠",
+        _ => "⚪"
+    };
+
+    private static string GetStatusIcon(ElementLocatorStrategy strategy)
+    {
+        if (strategy.TestDurationMs <= 0)
+        {
+            return "•";
+        }
+
+        return strategy.IsSuccessful ? "✓" : "✗";
+    }
+
+    private static Color GetRiskColor(LocatorRiskLevel risk) => risk switch
+    {
+        LocatorRiskLevel.Low => Color.FromArgb(198, 239, 206),     // Light green
+        LocatorRiskLevel.Medium => Color.FromArgb(255, 242, 204),  // Light yellow
+        LocatorRiskLevel.High => Color.FromArgb(248, 203, 173),    // Light orange
+        _ => SystemColors.Window
+    };
+
+    private void DrawStrategyListItem(ListBox listBox, IList<ElementLocatorStrategy> source, DrawItemEventArgs e)
+    {
+        e.DrawBackground();
+        if (e.Index < 0 || e.Index >= listBox.Items.Count)
+        {
+            return;
+        }
+
+        var bounds = e.Bounds;
+        var strategy = (source != null && e.Index < source.Count) ? source[e.Index] : null;
+        var backgroundColor = strategy != null ? GetRiskColor(strategy.RiskLevel) : SystemColors.Window;
+
+        using (var backgroundBrush = new SolidBrush(backgroundColor))
+        {
+            e.Graphics.FillRectangle(backgroundBrush, bounds);
+        }
+
+        var text = listBox.Items[e.Index]?.ToString() ?? string.Empty;
+        var textColor = Color.Black;
+        TextRenderer.DrawText(e.Graphics, text, e.Font, bounds, textColor, TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
+
+        if ((e.State & DrawItemState.Selected) == DrawItemState.Selected)
+        {
+            using var selectionPen = new Pen(Color.Black, 1);
+            e.Graphics.DrawRectangle(selectionPen, bounds.X, bounds.Y, bounds.Width - 1, bounds.Height - 1);
+        }
+
+        e.DrawFocusRectangle();
+    }
+
+    private void lstStrategies_DrawItem(object? sender, DrawItemEventArgs e)
+    {
+        DrawStrategyListItem(lstStrategies, _availableStrategies, e);
+    }
+
+    private void lstSmartStrategies_DrawItem(object? sender, DrawItemEventArgs e)
+    {
+        DrawStrategyListItem(lstSmartStrategies, _smartStrategies, e);
     }
 
     private void cmbActionType_SelectedIndexChanged(object? sender, EventArgs e)
@@ -1382,7 +1605,6 @@ public partial class TaskChainRecorderForm : Form
         DebugLogger.Log("STRATEJİ TESTLERİ BAŞLATILIYOR");
         DebugLogger.LogSeparator('=', 80);
 
-        lstStrategies.Items.Clear();
         lblTestResult.Text = "⏳ Test ediliyor...";
         lblTestResult.ForeColor = Color.Blue;
 
@@ -1413,14 +1635,7 @@ public partial class TaskChainRecorderForm : Form
                 // Stratejiyi test et (elementInfo ile hızlandırma)
                 var testedStrategy = await ElementLocatorTester.TestStrategy(strategy, _currentStep.UIElement);
                 _availableStrategies[i] = testedStrategy;
-
-                // Sonucu göster
-                string icon = testedStrategy.IsSuccessful ? "✅" : "❌";
-                string result = testedStrategy.IsSuccessful
-                    ? $"Başarılı ({testedStrategy.TestDurationMs}ms)"
-                    : $"Başarısız: {testedStrategy.ErrorMessage}";
-
-                lstStrategies.Items.Add($"{icon} {testedStrategy.Name} - {result}");
+                RefreshStrategyListBox();
 
                 if (testedStrategy.IsSuccessful)
                 {
@@ -1441,6 +1656,7 @@ public partial class TaskChainRecorderForm : Form
             {
                 LogMessage($"\n✅ Test tamamlandı: {successCount} başarılı, {failCount} başarısız");
                 LogMessage("Bir strateji seçin ve 'Adımı Kaydet' butonuna tıklayın.");
+                RefreshStrategyListBox();
 
                 // Sonucu label'da göster
                 lblTestResult.Text = $"✅ Test Tamamlandı - Başarılı: {successCount}, Başarısız: {failCount}";
@@ -1466,6 +1682,7 @@ public partial class TaskChainRecorderForm : Form
         {
             _testCancellationTokenSource = null;
             btnTestAllStrategies.Text = "🧪 Tüm Stratejileri Test Et";
+            RefreshStrategyListBox();
         }
     }
 
@@ -1519,6 +1736,7 @@ public partial class TaskChainRecorderForm : Form
                     _availableStrategies[index] = testedStrategy;
                     _selectedStrategy = testedStrategy;
                 }
+                RefreshStrategyListBox();
             }
             else if (strategy == _selectedSmartStrategy)
             {
@@ -1528,13 +1746,9 @@ public partial class TaskChainRecorderForm : Form
                     _smartStrategies[index] = testedStrategy;
                     _selectedSmartStrategy = testedStrategy;
                 }
+                RefreshSmartStrategyListBox();
             }
 
-            // Sonucu göster
-            string icon = testedStrategy.IsSuccessful ? "✅" : "❌";
-            string result = testedStrategy.IsSuccessful
-                ? $"Başarılı ({testedStrategy.TestDurationMs}ms)"
-                : $"Başarısız: {testedStrategy.ErrorMessage}";
 
             if (testedStrategy.IsSuccessful)
             {
@@ -1579,6 +1793,7 @@ public partial class TaskChainRecorderForm : Form
             if (_currentStep.UIElement == null && _selectedStrategy.RecordedElement != null)
             {
                 _currentStep.UIElement = SmartElementRecorder.ConvertToUIElementInfo(_selectedStrategy.RecordedElement);
+                UpdateElementContextSummary(_currentStep.UIElement, _selectedStrategy);
                 LogMessage("ℹ️ UIElement bilgisi akıllı kayıttan dolduruldu.");
             }
 
@@ -1591,6 +1806,11 @@ public partial class TaskChainRecorderForm : Form
             {
                 LogMessage($"  ⚠ DİKKAT: Bu strateji başarısız! Yine de kaydetmek istiyor musunuz?");
             }
+        }
+
+        if (_selectedStrategy != null)
+        {
+            UpdateElementContextSummary(_currentStep.UIElement, _selectedStrategy);
         }
     }
 
@@ -1682,7 +1902,7 @@ public partial class TaskChainRecorderForm : Form
             // Önceki kayıtları temizle
             _lastRecordedElement = null;
             _smartStrategies.Clear();
-            lstSmartStrategies.Items.Clear();
+            RefreshSmartStrategyListBox();
             txtSmartElementProperties.Text = "";
             LogMessage($"[DEBUG] Önceki kayıtlar temizlendi");
 
@@ -1793,6 +2013,13 @@ public partial class TaskChainRecorderForm : Form
             // Element bilgilerini sakla
             _lastRecordedElement = element;
             LogMessage($"[DEBUG] _lastRecordedElement atandı: {_lastRecordedElement != null}");
+
+            var previewInfo = SmartElementRecorder.ConvertToUIElementInfo(element);
+            UpdateElementContextSummary(previewInfo);
+            if (_currentStep.UIElement == null)
+            {
+                _currentStep.UIElement = previewInfo;
+            }
 
             var playwrightStartTime = DateTime.Now;
             await EnrichWithPlaywrightAsync(element);
@@ -1926,7 +2153,6 @@ public partial class TaskChainRecorderForm : Form
     private void CreateSmartStrategies(RecordedElement element)
     {
         _smartStrategies.Clear();
-        lstSmartStrategies.Items.Clear();
 
         // SmartElementRecorder'daki GenerateLocatorStrategies metodunu kullan
         var strategies = SmartElementRecorder.GenerateLocatorStrategies(element);
@@ -1936,15 +2162,11 @@ public partial class TaskChainRecorderForm : Form
         foreach (var strategy in strategies)
         {
             _smartStrategies.Add(strategy);
-
-            // ListBox'a ekle
-            var displayText = $"{strategy.Name} - {strategy.Description}";
-            lstSmartStrategies.Items.Add(displayText);
-
             LogMessage($"  ✓ {strategy.Name}: {strategy.Description}");
         }
 
-        // İlk stratejiyi varsayılan olarak seç
+        RefreshSmartStrategyListBox();
+
         if (lstSmartStrategies.Items.Count > 0)
         {
             lstSmartStrategies.SelectedIndex = 0;
@@ -2018,7 +2240,7 @@ public partial class TaskChainRecorderForm : Form
         };
 
         _smartStrategies.Add(strategy);
-        lstSmartStrategies.Items.Add($"[{_smartStrategies.Count}] {name}: {description}");
+        RefreshSmartStrategyListBox();
     }
 
     /// <summary>
@@ -2128,12 +2350,9 @@ public partial class TaskChainRecorderForm : Form
                 LogMessage($"  ✅ Test başarılı! ({stopwatch.ElapsedMilliseconds}ms)");
                 lblSmartTestResult.Text = $"✅ Test Başarılı - {stopwatch.ElapsedMilliseconds}ms";
                 lblSmartTestResult.ForeColor = Color.Green;
-
-                // Strateji listesini güncelle
-                var index = lstSmartStrategies.SelectedIndex;
-                if (index >= 0)
+                RefreshSmartStrategyListBox();
+                if (lstSmartStrategies.SelectedIndex >= 0)
                 {
-                    lstSmartStrategies.Items[index] = $"[{index + 1}] {_selectedSmartStrategy.Name}: {_selectedSmartStrategy.Description} ✅";
                     lblSmartSelectedStrategy.Text = $"Seçili: {_selectedSmartStrategy.Name} ✅ BAŞARILI";
                     lblSmartSelectedStrategy.ForeColor = Color.Green;
                 }
@@ -2143,12 +2362,9 @@ public partial class TaskChainRecorderForm : Form
                 LogMessage($"  ❌ Test başarısız: {string.Join("; ", errors)}");
                 lblSmartTestResult.Text = $"❌ Test Başarısız - {string.Join("; ", errors)}";
                 lblSmartTestResult.ForeColor = Color.Red;
-
-                // Strateji listesini güncelle
-                var index = lstSmartStrategies.SelectedIndex;
-                if (index >= 0)
+                RefreshSmartStrategyListBox();
+                if (lstSmartStrategies.SelectedIndex >= 0)
                 {
-                    lstSmartStrategies.Items[index] = $"[{index + 1}] {_selectedSmartStrategy.Name}: {_selectedSmartStrategy.Description} ❌";
                     lblSmartSelectedStrategy.Text = $"Seçili: {_selectedSmartStrategy.Name} ❌ BAŞARISIZ";
                     lblSmartSelectedStrategy.ForeColor = Color.Red;
                 }
@@ -2305,6 +2521,7 @@ public partial class TaskChainRecorderForm : Form
 
             _selectedSmartStrategy = bestStrategy;
             _currentStep.UIElement = SmartElementRecorder.ConvertToUIElementInfo(_lastRecordedElement);
+            UpdateElementContextSummary(_currentStep.UIElement, bestStrategy);
 
             LogMessage("💾 Test başarılı - Şimdi 'Adımı Kaydet' butonuna tıklayabilirsiniz.");
             lblSmartTestResult.Text = "✅ Başarılı! Adımı kaydetmek için 'Adımı Kaydet' butonuna tıklayın.";
@@ -2321,15 +2538,7 @@ public partial class TaskChainRecorderForm : Form
     /// </summary>
     private void UpdateSmartStrategiesList()
     {
-        lstSmartStrategies.Items.Clear();
-
-        for (int i = 0; i < _smartStrategies.Count; i++)
-        {
-            var strategy = _smartStrategies[i];
-            var prefix = strategy.IsSuccessful ? "✅" : "❌";
-            var text = $"{prefix} [{i + 1}] {strategy.Name}: {strategy.Description}";
-            lstSmartStrategies.Items.Add(text);
-        }
+        RefreshSmartStrategyListBox();
     }
 
     /// <summary>
@@ -2357,6 +2566,7 @@ public partial class TaskChainRecorderForm : Form
         if (_currentStep.UIElement == null && strategy.RecordedElement != null)
         {
             _currentStep.UIElement = SmartElementRecorder.ConvertToUIElementInfo(strategy.RecordedElement);
+            UpdateElementContextSummary(_currentStep.UIElement, strategy);
             LogMessage("ℹ️ UIElement bilgisi akıllı kayıttan dolduruldu.");
         }
 
@@ -2372,6 +2582,8 @@ public partial class TaskChainRecorderForm : Form
         {
             LogMessage($"   Hata: {strategy.ErrorMessage}");
         }
+
+        UpdateElementContextSummary(_currentStep.UIElement, strategy);
     }
 
     #endregion
@@ -2886,6 +3098,7 @@ public partial class TaskChainRecorderForm : Form
         }
 
         txtElementProperties.Text = properties.ToString();
+        UpdateElementContextSummary(step.UIElement, step.SelectedStrategy);
 
         // Action tipini ayarla
         cmbActionType.SelectedIndex = step.Action switch
@@ -2919,11 +3132,11 @@ public partial class TaskChainRecorderForm : Form
             _selectedStrategy = step.SelectedStrategy;
             _availableStrategies.Clear();
             _availableStrategies.Add(step.SelectedStrategy);
-
-            lstStrategies.Items.Clear();
-            var strategyDisplay = $"{step.SelectedStrategy.Name} [{(step.SelectedStrategy.IsSuccessful ? "✓" : "✗")}]";
-            lstStrategies.Items.Add(strategyDisplay);
-            lstStrategies.SelectedIndex = 0;
+            RefreshStrategyListBox();
+            if (lstStrategies.Items.Count > 0)
+            {
+                lstStrategies.SelectedIndex = 0;
+            }
 
             lblSelectedStrategy.Text = $"Seçili Strateji: {step.SelectedStrategy.Name}";
             lblSelectedStrategy.ForeColor = step.SelectedStrategy.IsSuccessful ? Color.Green : Color.Red;
@@ -2956,6 +3169,7 @@ public partial class TaskChainRecorderForm : Form
             StepType = StepType.TargetSelection
         };
 
+        UpdateElementContextSummary(null);
         LogMessage("✓ Düzenleme modu iptal edildi");
     }
 

@@ -26,6 +26,7 @@ partial class TaskChainRecorderForm
 
         // Task Chain Viewer (sağ panel)
         pnlTaskChainViewer = new Panel();
+        txtElementContextSummary = new TextBox();
         lblTaskChainTitle = new Label();
         txtTaskChainSteps = new TextBox();
         btnDeleteLastStep = new Button();
@@ -448,9 +449,12 @@ partial class TaskChainRecorderForm
 
         // lstSmartStrategies
         lstSmartStrategies.Font = new Font("Consolas", 9F);
+        lstSmartStrategies.DrawMode = DrawMode.OwnerDrawFixed;
+        lstSmartStrategies.ItemHeight = 20;
         lstSmartStrategies.Location = new Point(15, 100);
         lstSmartStrategies.Size = new Size(430, 90);
         lstSmartStrategies.SelectionMode = SelectionMode.One;
+        lstSmartStrategies.DrawItem += lstSmartStrategies_DrawItem;
         lstSmartStrategies.SelectedIndexChanged += lstSmartStrategies_SelectedIndexChanged;
 
         // txtSmartElementProperties
@@ -523,9 +527,12 @@ partial class TaskChainRecorderForm
 
         // lstStrategies
         lstStrategies.Font = new Font("Consolas", 9F);
+        lstStrategies.DrawMode = DrawMode.OwnerDrawFixed;
+        lstStrategies.ItemHeight = 20;
         lstStrategies.Location = new Point(15, 100);
         lstStrategies.Size = new Size(430, 150);
         lstStrategies.SelectionMode = SelectionMode.One;
+        lstStrategies.DrawItem += lstStrategies_DrawItem;
         lstStrategies.SelectedIndexChanged += lstStrategies_SelectedIndexChanged;
 
         // lblSelectedStrategy
@@ -647,7 +654,7 @@ partial class TaskChainRecorderForm
         // TASK CHAIN VIEWER PANEL (ALT PANEL)
         // ==========================================
         pnlTaskChainViewer.Dock = DockStyle.Bottom;
-        pnlTaskChainViewer.Height = 230;
+        pnlTaskChainViewer.Height = 260;
         pnlTaskChainViewer.BackColor = Color.White;
         pnlTaskChainViewer.BorderStyle = BorderStyle.FixedSingle;
         pnlTaskChainViewer.Padding = new Padding(5);
@@ -657,15 +664,29 @@ partial class TaskChainRecorderForm
         pnlTaskChainViewer.Controls.Add(btnDeleteLastStep);
         pnlTaskChainViewer.Controls.Add(txtTaskChainSteps);
         pnlTaskChainViewer.Controls.Add(lblTaskChainTitle);
+        pnlTaskChainViewer.Controls.Add(txtElementContextSummary);
+
+        // txtElementContextSummary
+        txtElementContextSummary.Font = new Font("Consolas", 8.5F);
+        txtElementContextSummary.Multiline = true;
+        txtElementContextSummary.ReadOnly = true;
+        txtElementContextSummary.ScrollBars = ScrollBars.Vertical;
+        txtElementContextSummary.BackColor = Color.White;
+        txtElementContextSummary.ForeColor = Color.Black;
+        txtElementContextSummary.BorderStyle = BorderStyle.FixedSingle;
+        txtElementContextSummary.Location = new Point(5, 5);
+        txtElementContextSummary.Size = new Size(460, 70);
+        txtElementContextSummary.TabStop = false;
+        txtElementContextSummary.Text = "Element bağlamı kaydedildiğinde burada görünecek.";
 
         // lblTaskChainTitle
         lblTaskChainTitle.Text = "Görev Zinciri Adımları";
         lblTaskChainTitle.Font = new Font("Segoe UI", 11F, FontStyle.Bold);
         lblTaskChainTitle.ForeColor = Color.White;
         lblTaskChainTitle.BackColor = Color.FromArgb(70, 130, 180);
-        lblTaskChainTitle.Dock = DockStyle.Top;
-        lblTaskChainTitle.Height = 38;
         lblTaskChainTitle.TextAlign = ContentAlignment.MiddleCenter;
+        lblTaskChainTitle.Location = new Point(5, 80);
+        lblTaskChainTitle.Size = new Size(460, 32);
 
         // txtTaskChainSteps
         txtTaskChainSteps.Font = new Font("Consolas", 8.5F);
@@ -675,15 +696,15 @@ partial class TaskChainRecorderForm
         txtTaskChainSteps.BackColor = Color.White;
         txtTaskChainSteps.ForeColor = Color.Black;
         txtTaskChainSteps.BorderStyle = BorderStyle.None;
-        txtTaskChainSteps.Location = new Point(5, 43);
-        txtTaskChainSteps.Size = new Size(460, 145);
+        txtTaskChainSteps.Location = new Point(5, 117);
+        txtTaskChainSteps.Size = new Size(460, 90);
         txtTaskChainSteps.TabStop = false;
         txtTaskChainSteps.Text = "Görev adımları kaydedildikçe burada görünecektir...";
 
         // btnDeleteLastStep
         btnDeleteLastStep.Text = "🗑️ Son";
         btnDeleteLastStep.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
-        btnDeleteLastStep.Location = new Point(5, 193);
+        btnDeleteLastStep.Location = new Point(5, 210);
         btnDeleteLastStep.Size = new Size(110, 34);
         btnDeleteLastStep.BackColor = Color.FromArgb(255, 140, 0);
         btnDeleteLastStep.ForeColor = Color.White;
@@ -695,7 +716,7 @@ partial class TaskChainRecorderForm
         // btnDeleteStep
         btnDeleteStep.Text = "🗑️ Sil";
         btnDeleteStep.Font = new Font("Segoe UI", 9F);
-        btnDeleteStep.Location = new Point(125, 193);
+        btnDeleteStep.Location = new Point(125, 210);
         btnDeleteStep.Size = new Size(110, 34);
         btnDeleteStep.BackColor = Color.FromArgb(220, 20, 60);
         btnDeleteStep.ForeColor = Color.White;
@@ -707,7 +728,7 @@ partial class TaskChainRecorderForm
         // btnEditStep
         btnEditStep.Text = "✏️ Düzenle";
         btnEditStep.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
-        btnEditStep.Location = new Point(245, 193);
+        btnEditStep.Location = new Point(245, 210);
         btnEditStep.Size = new Size(110, 34);
         btnEditStep.BackColor = Color.FromArgb(0, 120, 212);
         btnEditStep.ForeColor = Color.White;
@@ -719,7 +740,7 @@ partial class TaskChainRecorderForm
         // btnDeleteAllSteps
         btnDeleteAllSteps.Text = "🗑️ Tümü";
         btnDeleteAllSteps.Font = new Font("Segoe UI", 9F);
-        btnDeleteAllSteps.Location = new Point(365, 193);
+        btnDeleteAllSteps.Location = new Point(365, 210);
         btnDeleteAllSteps.Size = new Size(100, 34);
         btnDeleteAllSteps.BackColor = Color.FromArgb(139, 0, 0);
         btnDeleteAllSteps.ForeColor = Color.White;
@@ -828,6 +849,7 @@ partial class TaskChainRecorderForm
     private Button btnClose;
 
     private Panel pnlTaskChainViewer;
+    private TextBox txtElementContextSummary;
     private Label lblTaskChainTitle;
     private TextBox txtTaskChainSteps;
     private Button btnDeleteStep;

@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows.Automation;
 
@@ -91,6 +94,7 @@ public class UIElementPicker
             // === TEMEL ÖZELLİKLER ===
             info.AutomationId = element.Current.AutomationId;
             info.Name = element.Current.Name;
+            info.NormalizedName = DynamicTextNormalizer.Normalize(info.Name);
             info.ClassName = element.Current.ClassName;
             info.ControlType = element.Current.ControlType.ProgrammaticName;
             info.FrameworkId = element.Current.FrameworkId;
@@ -140,6 +144,7 @@ public class UIElementPicker
                 {
                     info.WindowTitle = window.Current.Name;
                     info.WindowName = window.Current.Name;
+                    info.NormalizedWindowTitle = DynamicTextNormalizer.Normalize(info.WindowTitle);
                     info.WindowClassName = window.Current.ClassName;
                     info.WindowId = window.Current.NativeWindowHandle.ToString();
                     info.WindowProcessId = window.Current.ProcessId;
@@ -163,6 +168,7 @@ public class UIElementPicker
                 {
                     info.ContainerAutomationId = container.Current.AutomationId;
                     info.ContainerName = container.Current.Name;
+                    info.NormalizedContainerName = DynamicTextNormalizer.Normalize(info.ContainerName);
                     info.ContainerClassName = container.Current.ClassName;
                     info.ContainerControlType = container.Current.ControlType.ProgrammaticName;
 
@@ -193,6 +199,7 @@ public class UIElementPicker
                 {
                     info.ParentAutomationId = parent.Current.AutomationId;
                     info.ParentName = parent.Current.Name;
+                    info.NormalizedParentName = DynamicTextNormalizer.Normalize(info.ParentName);
                     info.ParentClassName = parent.Current.ClassName;
                 }
             }
@@ -212,6 +219,7 @@ public class UIElementPicker
                     if (grandParent != null && grandParent != AutomationElement.RootElement)
                     {
                         info.GrandParentName = grandParent.Current.Name;
+                        info.NormalizedGrandParentName = DynamicTextNormalizer.Normalize(info.GrandParentName);
                         info.GrandParentAutomationId = grandParent.Current.AutomationId;
                     }
                 }
@@ -269,6 +277,14 @@ public class UIElementPicker
             catch { }
 
             // DescribedBy UIA'da yok, MSHTML'den alınacak
+
+            // === ANCESTOR BİLGİSİ ===
+            var ancestors = GetAncestorChain(element);
+            if (ancestors.Count > 0)
+            {
+                info.Ancestors = ancestors;
+                PopulateContextFromAncestors(info, ancestors);
+            }
 
             // === 3 TEKNOLOJİ İLE ZENGİNLEŞTİRME ===
             // Teknoloji 1: UI Automation (yukarıda tamamlandı)
@@ -329,6 +345,128 @@ public class UIElementPicker
     /// <summary>
     /// Web elementleri için ek özellikleri çıkarır
     /// </summary>
+    public static List<AncestorInfo> GetAncestorChain(AutomationElement element, int maxDepth = 10)
+    {
+        var ancestors = new List<AncestorInfo>();
+        var walker = TreeWalker.RawViewWalker;
+        var current = walker.GetParent(element);
+        int level = 0;
+
+        while (current != null && current != AutomationElement.RootElement && level < maxDepth)
+        {
+            try
+            {
+                var rect = current.Current.BoundingRectangle;
+                var name = current.Current.Name;
+                ancestors.Add(new AncestorInfo
+                {
+                    Level = level,
+                    Name = name,
+                    NormalizedName = DynamicTextNormalizer.Normalize(name),
+                    AutomationId = current.Current.AutomationId,
+                    ClassName = current.Current.ClassName,
+                    ControlType = current.Current.ControlType.ProgrammaticName,
+                    FrameworkId = current.Current.FrameworkId,
+                    IndexInParent = GetIndexInParent(current),
+                    BoundingRectangle = $"{rect.X},{rect.Y},{rect.Width},{rect.Height}"
+                });
+            }
+            catch
+            {
+                var rawName = SafeGet(() => current!.Current.Name);
+                ancestors.Add(new AncestorInfo
+                {
+                    Level = level,
+                    Name = rawName,
+                    NormalizedName = DynamicTextNormalizer.Normalize(rawName),
+                    AutomationId = SafeGet(() => current!.Current.AutomationId),
+                    ClassName = SafeGet(() => current!.Current.ClassName),
+                    ControlType = SafeGet(() => current!.Current.ControlType.ProgrammaticName),
+                    FrameworkId = SafeGet(() => current!.Current.FrameworkId),
+                    IndexInParent = null,
+                    BoundingRectangle = null
+                });
+            }
+
+            try
+            {
+                current = walker.GetParent(current);
+            }
+            catch
+            {
+                break;
+            }
+            level++;
+        }
+
+        return ancestors;
+    }
+
+    private static string? SafeGet(Func<string?> getter)
+    {
+        try { return getter(); }
+        catch { return null; }
+    }
+
+    public static void PopulateContextFromAncestors(UIElementInfo info, List<AncestorInfo> ancestors)
+    {
+        if (ancestors == null || ancestors.Count == 0)
+        {
+            return;
+        }
+
+        // Tab bilgisi (TabItem)
+        var tabAncestor = ancestors.FirstOrDefault(a =>
+            !string.IsNullOrEmpty(a.ControlType) &&
+            (a.ControlType.Contains("TabItem", StringComparison.OrdinalIgnoreCase) ||
+             a.ControlType.EndsWith("Tab", StringComparison.OrdinalIgnoreCase)));
+
+        if (tabAncestor != null)
+        {
+            info.TabName = tabAncestor.Name;
+            info.NormalizedTabName = DynamicTextNormalizer.Normalize(tabAncestor.Name);
+            info.TabAutomationId = tabAncestor.AutomationId;
+            info.TabControlType = tabAncestor.ControlType;
+        }
+
+        // Bölüm/Pencere bilgisi (Group, Pane)
+        var sectionAncestor = ancestors.FirstOrDefault(a =>
+            !string.IsNullOrEmpty(a.ControlType) &&
+            (a.ControlType.Contains("Group", StringComparison.OrdinalIgnoreCase) ||
+             a.ControlType.Contains("Pane", StringComparison.OrdinalIgnoreCase) ||
+             a.ControlType.Contains("Custom", StringComparison.OrdinalIgnoreCase)));
+
+        if (sectionAncestor != null)
+        {
+            info.SectionName = sectionAncestor.Name;
+            info.NormalizedSectionName = DynamicTextNormalizer.Normalize(sectionAncestor.Name);
+            info.SectionAutomationId = sectionAncestor.AutomationId;
+            info.SectionControlType = sectionAncestor.ControlType;
+        }
+
+        // Sayfa/doküman bilgisi (Document)
+        var pageAncestor = ancestors.FirstOrDefault(a =>
+            !string.IsNullOrEmpty(a.ControlType) &&
+            (a.ControlType.Contains("Document", StringComparison.OrdinalIgnoreCase) ||
+             a.ControlType.Contains("Window", StringComparison.OrdinalIgnoreCase)));
+
+        if (pageAncestor != null)
+        {
+            var pageName = pageAncestor.Name ?? info.WindowTitle;
+            info.PageName = pageName;
+            info.NormalizedPageName = DynamicTextNormalizer.Normalize(pageName);
+            info.PageAutomationId = pageAncestor.AutomationId;
+            info.PageControlType = pageAncestor.ControlType;
+        }
+        else if (!string.IsNullOrEmpty(info.WindowTitle))
+        {
+            info.PageName = info.WindowTitle;
+            info.NormalizedPageName = DynamicTextNormalizer.Normalize(info.WindowTitle);
+            info.PageAutomationId = info.WindowId;
+            info.PageControlType = "ControlType.Window";
+        }
+    }
+
     private static void ExtractWebProperties(AutomationElement element, UIElementInfo info)
     {
         try

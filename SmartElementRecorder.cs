@@ -456,6 +456,7 @@ namespace MedulaOtomasyon
 
             LogSuccess($"✅ RecordedElement oluşturuldu!");
             PopulateWindowInfo(recordedElement, element);
+            recordedElement.Ancestors = UIElementPicker.GetAncestorChain(tableRow ?? element);
             return recordedElement;
         }
 
@@ -1488,6 +1489,7 @@ namespace MedulaOtomasyon
             }
 
             PopulateWindowInfo(recorded, element);
+            recorded.Ancestors = UIElementPicker.GetAncestorChain(element);
             return recorded;
         }
 
@@ -2470,6 +2472,7 @@ namespace MedulaOtomasyon
             {
                 uiElement.WindowTitle = recordedElement.WindowTitle;
                 uiElement.WindowName = recordedElement.WindowName ?? recordedElement.WindowTitle;
+                uiElement.NormalizedWindowTitle = DynamicTextNormalizer.Normalize(uiElement.WindowTitle);
             }
 
             if (!string.IsNullOrEmpty(recordedElement.WindowClassName))
@@ -2498,6 +2501,7 @@ namespace MedulaOtomasyon
             {
                 uiElement.ContainerAutomationId = recordedElement.ParentAutomationId;
                 uiElement.ContainerName = recordedElement.ParentName;
+                uiElement.NormalizedContainerName = DynamicTextNormalizer.Normalize(uiElement.ContainerName);
                 uiElement.ContainerClassName = recordedElement.ParentClassName;
                 uiElement.ContainerControlType = recordedElement.ParentControlType;
             }
@@ -2505,6 +2509,7 @@ namespace MedulaOtomasyon
             // ParentAutomationId ve ParentName'i de set et (backwards compatibility)
             uiElement.ParentAutomationId = recordedElement.ParentAutomationId;
             uiElement.ParentName = recordedElement.ParentName;
+            uiElement.NormalizedParentName = DynamicTextNormalizer.Normalize(uiElement.ParentName);
             uiElement.ParentClassName = recordedElement.ParentClassName;
 
             // Tablo bilgilerini ekle (varsa)
@@ -2551,6 +2556,11 @@ namespace MedulaOtomasyon
                 uiElement.OtherAttributes["BrowserWindowHandle"] = recordedElement.HtmlInfo.BrowserWindowHandle.ToString();
             }
 
+            uiElement.NormalizedName = DynamicTextNormalizer.Normalize(uiElement.Name);
+            uiElement.NormalizedPageName ??= DynamicTextNormalizer.Normalize(uiElement.PageName);
+            uiElement.NormalizedSectionName ??= DynamicTextNormalizer.Normalize(uiElement.SectionName);
+            uiElement.NormalizedTabName ??= DynamicTextNormalizer.Normalize(uiElement.TabName);
+
             if (recordedElement.PlaywrightInfo != null)
             {
                 uiElement.PlaywrightSelector =
@@ -2585,6 +2595,26 @@ namespace MedulaOtomasyon
                 {
                     uiElement.OtherAttributes["PlaywrightError"] = recordedElement.PlaywrightInfo.ErrorMessage;
                 }
+            }
+
+            if (recordedElement.Ancestors?.Any() == true)
+            {
+                uiElement.Ancestors = recordedElement.Ancestors
+                    .Select(a => new AncestorInfo
+                    {
+                        Level = a.Level,
+                        Name = a.Name,
+                        NormalizedName = !string.IsNullOrWhiteSpace(a.NormalizedName) ? a.NormalizedName : DynamicTextNormalizer.Normalize(a.Name),
+                        AutomationId = a.AutomationId,
+                        ClassName = a.ClassName,
+                        ControlType = a.ControlType,
+                        FrameworkId = a.FrameworkId,
+                        IndexInParent = a.IndexInParent,
+                        BoundingRectangle = a.BoundingRectangle
+                    })
+                    .ToList();
+
+                UIElementPicker.PopulateContextFromAncestors(uiElement, uiElement.Ancestors);
             }
 
             return uiElement;
@@ -2702,6 +2732,29 @@ namespace MedulaOtomasyon
                 throw new ArgumentNullException(nameof(recordedElement));
 
             var strategies = new List<ElementLocatorStrategy>();
+            var normalizedName = DynamicTextNormalizer.Normalize(recordedElement.Name);
+            bool nameIsDynamic = DynamicTextNormalizer.IsLikelyDynamic(recordedElement.Name, normalizedName);
+
+            LocatorRiskLevel GetPlaywrightRisk(string kind)
+            {
+                return kind.Equals("table-row", StringComparison.OrdinalIgnoreCase) ||
+                       kind.Equals("row-index", StringComparison.OrdinalIgnoreCase)
+                    ? LocatorRiskLevel.Medium
+                    : LocatorRiskLevel.Low;
+            }
+
+            void AddStrategy(string title, string description, LocatorType type, Dictionary<string, string> props, LocatorRiskLevel risk)
+            {
+                strategies.Add(new ElementLocatorStrategy
+                {
+                    Name = title,
+                    Description = description,
+                    Type = type,
+                    Properties = props,
+                    RecordedElement = recordedElement,
+                    RiskLevel = risk
+                });
+            }
 
             if (recordedElement.PlaywrightInfo?.Selectors?.Any() == true)
             {
@@ -2736,148 +2789,122 @@ namespace MedulaOtomasyon
                         properties["BrowserProcessId"] = recordedElement.HtmlInfo.BrowserProcessId.ToString();
                     }
 
-                    strategies.Add(new ElementLocatorStrategy
-                    {
-                        Name = $"Playwright {kvp.Key}",
-                        Description = $"Playwright selector ({kvp.Key}): {kvp.Value}",
-                        Type = LocatorType.PlaywrightSelector,
-                        Properties = properties,
-                        RecordedElement = recordedElement
-                    });
+                    AddStrategy(
+                        $"Playwright {kvp.Key}",
+                        $"Playwright selector ({kvp.Key}): {kvp.Value}",
+                        LocatorType.PlaywrightSelector,
+                        properties,
+                        GetPlaywrightRisk(kvp.Key));
                 }
             }
 
-            // 1. HTML ID (en güvenilir - varsa)
             if (!string.IsNullOrEmpty(recordedElement.HtmlInfo?.Id))
             {
-                strategies.Add(new ElementLocatorStrategy
-                {
-                    Name = "HTML ID",
-                    Description = $"HTML element ID: {recordedElement.HtmlInfo.Id}",
-                    Type = LocatorType.HtmlId,
-                    Properties = new Dictionary<string, string>
-                    {
-                        ["HtmlId"] = recordedElement.HtmlInfo.Id
-                    },
-                    RecordedElement = recordedElement
-                });
+                AddStrategy(
+                    "HTML ID",
+                    $"HTML element ID: {recordedElement.HtmlInfo.Id}",
+                    LocatorType.HtmlId,
+                    new Dictionary<string, string> { ["HtmlId"] = recordedElement.HtmlInfo.Id },
+                    LocatorRiskLevel.Low);
             }
 
-            // 2. XPath (HTML için)
             if (!string.IsNullOrEmpty(recordedElement.XPath))
             {
-                strategies.Add(new ElementLocatorStrategy
-                {
-                    Name = "XPath",
-                    Description = $"XPath: {recordedElement.XPath}",
-                    Type = LocatorType.XPath,
-                    Properties = new Dictionary<string, string>
-                    {
-                        ["XPath"] = recordedElement.XPath
-                    },
-                    RecordedElement = recordedElement
-                });
+                AddStrategy(
+                    "XPath",
+                    $"XPath: {recordedElement.XPath}",
+                    LocatorType.XPath,
+                    new Dictionary<string, string> { ["XPath"] = recordedElement.XPath },
+                    LocatorRiskLevel.Low);
             }
 
-            // 3. Table Row Index (tablo satırı için en iyi)
             if (recordedElement.TableInfo != null && recordedElement.TableInfo.RowIndex >= 0)
             {
                 var tableId = recordedElement.TableInfo.HtmlTableId ?? recordedElement.TableInfo.TableId;
                 if (!string.IsNullOrEmpty(tableId))
                 {
-                    strategies.Add(new ElementLocatorStrategy
-                    {
-                        Name = "Table Row Index",
-                        Description = $"Table: {tableId}, Row: {recordedElement.TableInfo.RowIndex}",
-                        Type = LocatorType.TableRowIndex,
-                        Properties = new Dictionary<string, string>
+                    AddStrategy(
+                        "Table Row Index",
+                        $"Table: {tableId}, Row: {recordedElement.TableInfo.RowIndex}",
+                        LocatorType.TableRowIndex,
+                        new Dictionary<string, string>
                         {
                             ["TableId"] = tableId,
                             ["RowIndex"] = recordedElement.TableInfo.RowIndex.ToString()
                         },
-                        RecordedElement = recordedElement
-                    });
+                        LocatorRiskLevel.Medium);
                 }
             }
 
-            // 4. Text Content (hücre metinleri ile)
             if (recordedElement.HtmlInfo?.TextContent?.Any() == true)
             {
-                strategies.Add(new ElementLocatorStrategy
-                {
-                    Name = "Text Content",
-                    Description = $"Cell texts: {string.Join(", ", recordedElement.HtmlInfo.TextContent.Take(3))}",
-                    Type = LocatorType.TextContent,
-                    Properties = new Dictionary<string, string>
+                AddStrategy(
+                    "Text Content",
+                    $"Cell texts: {string.Join(", ", recordedElement.HtmlInfo.TextContent.Take(3))}",
+                    LocatorType.TextContent,
+                    new Dictionary<string, string>
                     {
                         ["TextContent"] = string.Join("|", recordedElement.HtmlInfo.TextContent)
                     },
-                    RecordedElement = recordedElement
-                });
+                    LocatorRiskLevel.High);
             }
 
-            // 5. CSS Selector
             if (!string.IsNullOrEmpty(recordedElement.CssSelector))
             {
-                strategies.Add(new ElementLocatorStrategy
-                {
-                    Name = "CSS Selector",
-                    Description = $"CSS: {recordedElement.CssSelector}",
-                    Type = LocatorType.CssSelector,
-                    Properties = new Dictionary<string, string>
+                AddStrategy(
+                    "CSS Selector",
+                    $"CSS: {recordedElement.CssSelector}",
+                    LocatorType.CssSelector,
+                    new Dictionary<string, string>
                     {
                         ["CssSelector"] = recordedElement.CssSelector
                     },
-                    RecordedElement = recordedElement
-                });
+                    LocatorRiskLevel.Medium);
             }
 
-            // 6. AutomationId (UI Automation için)
             if (!string.IsNullOrEmpty(recordedElement.AutomationId))
             {
-                strategies.Add(new ElementLocatorStrategy
-                {
-                    Name = "AutomationId",
-                    Description = $"AutomationId: {recordedElement.AutomationId}",
-                    Type = LocatorType.AutomationId,
-                    Properties = new Dictionary<string, string>
+                AddStrategy(
+                    "AutomationId",
+                    $"AutomationId: {recordedElement.AutomationId}",
+                    LocatorType.AutomationId,
+                    new Dictionary<string, string>
                     {
                         ["AutomationId"] = recordedElement.AutomationId
                     },
-                    RecordedElement = recordedElement
-                });
+                    LocatorRiskLevel.Low);
             }
 
-            // 7. Name + ControlType
             if (!string.IsNullOrEmpty(recordedElement.Name) && !string.IsNullOrEmpty(recordedElement.ControlType))
             {
-                strategies.Add(new ElementLocatorStrategy
+                var nameControlProps = new Dictionary<string, string>
                 {
-                    Name = "Name + ControlType",
-                    Description = $"Name: {recordedElement.Name}, Type: {recordedElement.ControlType}",
-                    Type = LocatorType.NameAndControlType,
-                    Properties = new Dictionary<string, string>
-                    {
-                        ["Name"] = recordedElement.Name,
-                        ["ControlType"] = recordedElement.ControlType
-                    },
-                    RecordedElement = recordedElement
-                });
+                    ["Name"] = recordedElement.Name,
+                    ["ControlType"] = recordedElement.ControlType
+                };
+                if (!string.IsNullOrEmpty(normalizedName) && !string.Equals(normalizedName, recordedElement.Name, StringComparison.Ordinal))
+                {
+                    nameControlProps["NormalizedName"] = normalizedName;
+                }
+
+                AddStrategy(
+                    "Name + ControlType",
+                    $"Name: {recordedElement.Name}, Type: {recordedElement.ControlType}",
+                    LocatorType.NameAndControlType,
+                    nameControlProps,
+                    nameIsDynamic ? LocatorRiskLevel.High : LocatorRiskLevel.Medium);
             }
 
-            // 8. Coordinates (fallback - en son çare)
-            strategies.Add(new ElementLocatorStrategy
-            {
-                Name = "Coordinates",
-                Description = $"Screen position: ({recordedElement.ScreenPoint.X}, {recordedElement.ScreenPoint.Y})",
-                Type = LocatorType.Coordinates,
-                Properties = new Dictionary<string, string>
+            AddStrategy(
+                "Coordinates",
+                $"Screen position: ({recordedElement.ScreenPoint.X}, {recordedElement.ScreenPoint.Y})",
+                LocatorType.Coordinates,
+                new Dictionary<string, string>
                 {
                     ["X"] = recordedElement.ScreenPoint.X.ToString(),
                     ["Y"] = recordedElement.ScreenPoint.Y.ToString()
                 },
-                RecordedElement = recordedElement
-            });
+                LocatorRiskLevel.High);
 
             return strategies;
         }
@@ -2955,6 +2982,9 @@ namespace MedulaOtomasyon
         public string? XPath { get; set; }
         public string? CssSelector { get; set; }
         public PlaywrightSelectorInfo? PlaywrightInfo { get; set; }
+
+        // Hiyerarşi bilgisi
+        public List<AncestorInfo> Ancestors { get; set; } = new();
 
         // Açıklama
         public string Description { get; set; } = "";

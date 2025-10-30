@@ -1,4 +1,8 @@
+using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
+using System.Threading.Tasks;
 using System.Windows.Automation;
 
 namespace MedulaOtomasyon;
@@ -15,225 +19,211 @@ public class ElementLocatorTester
     {
         var strategies = new List<ElementLocatorStrategy>();
 
-        // 1. AutomationId (en stabil)
-        if (!string.IsNullOrEmpty(elementInfo.AutomationId))
+        var normalizedName = elementInfo.NormalizedName ?? DynamicTextNormalizer.Normalize(elementInfo.Name);
+        var normalizedParentName = elementInfo.NormalizedParentName ?? DynamicTextNormalizer.Normalize(elementInfo.ParentName);
+
+        bool nameIsDynamic = DynamicTextNormalizer.IsLikelyDynamic(elementInfo.Name, normalizedName);
+        bool parentNameIsDynamic = DynamicTextNormalizer.IsLikelyDynamic(elementInfo.ParentName, normalizedParentName);
+
+        void AddStrategy(string displayName, string description, LocatorType type, Dictionary<string, string> properties, LocatorRiskLevel risk)
         {
             strategies.Add(new ElementLocatorStrategy
             {
-                Name = "AutomationId",
-                Description = $"AutomationId: '{elementInfo.AutomationId}'",
-                Type = LocatorType.AutomationId,
-                Properties = new Dictionary<string, string>
-                {
-                    ["AutomationId"] = elementInfo.AutomationId
-                }
+                Name = displayName,
+                Description = description,
+                Type = type,
+                Properties = properties,
+                RiskLevel = risk
             });
+        }
 
-            // AutomationId + ControlType
+        // AutomationId tabanlı stratejiler (en stabil)
+        if (!string.IsNullOrEmpty(elementInfo.AutomationId))
+        {
+            AddStrategy(
+                "AutomationId",
+                $"AutomationId: '{elementInfo.AutomationId}'",
+                LocatorType.AutomationId,
+                new Dictionary<string, string> { ["AutomationId"] = elementInfo.AutomationId },
+                LocatorRiskLevel.Low);
+
             if (!string.IsNullOrEmpty(elementInfo.ControlType))
             {
-                strategies.Add(new ElementLocatorStrategy
-                {
-                    Name = "AutomationId + ControlType",
-                    Description = $"AutomationId: '{elementInfo.AutomationId}' + ControlType: '{elementInfo.ControlType}'",
-                    Type = LocatorType.AutomationIdAndControlType,
-                    Properties = new Dictionary<string, string>
+                AddStrategy(
+                    "AutomationId + ControlType",
+                    $"AutomationId: '{elementInfo.AutomationId}' + ControlType: '{elementInfo.ControlType}'",
+                    LocatorType.AutomationIdAndControlType,
+                    new Dictionary<string, string>
                     {
                         ["AutomationId"] = elementInfo.AutomationId,
                         ["ControlType"] = elementInfo.ControlType
-                    }
-                });
+                    },
+                    LocatorRiskLevel.Low);
             }
         }
 
-        // 2. Name
+        // Name tabanlı stratejiler
         if (!string.IsNullOrEmpty(elementInfo.Name))
         {
-            strategies.Add(new ElementLocatorStrategy
+            var baseProperties = new Dictionary<string, string>
             {
-                Name = "Name",
-                Description = $"Name: '{elementInfo.Name}'",
-                Type = LocatorType.Name,
-                Properties = new Dictionary<string, string>
-                {
-                    ["Name"] = elementInfo.Name
-                }
-            });
+                ["Name"] = elementInfo.Name
+            };
+            if (!string.IsNullOrEmpty(normalizedName) && !string.Equals(normalizedName, elementInfo.Name, StringComparison.Ordinal))
+            {
+                baseProperties["NormalizedName"] = normalizedName!;
+            }
 
-            // Name + ControlType
+            AddStrategy(
+                "Name",
+                $"Name: '{elementInfo.Name}'",
+                LocatorType.Name,
+                new Dictionary<string, string>(baseProperties),
+                nameIsDynamic ? LocatorRiskLevel.High : LocatorRiskLevel.Medium);
+
             if (!string.IsNullOrEmpty(elementInfo.ControlType))
             {
-                strategies.Add(new ElementLocatorStrategy
+                var nameControlProps = new Dictionary<string, string>(baseProperties)
                 {
-                    Name = "Name + ControlType",
-                    Description = $"Name: '{elementInfo.Name}' + ControlType: '{elementInfo.ControlType}'",
-                    Type = LocatorType.NameAndControlType,
-                    Properties = new Dictionary<string, string>
-                    {
-                        ["Name"] = elementInfo.Name,
-                        ["ControlType"] = elementInfo.ControlType
-                    }
-                });
+                    ["ControlType"] = elementInfo.ControlType
+                };
 
-                // Name + ControlType + IndexInParent (duplicate name çözümü)
+                AddStrategy(
+                    "Name + ControlType",
+                    $"Name: '{elementInfo.Name}' + ControlType: '{elementInfo.ControlType}'",
+                    LocatorType.NameAndControlType,
+                    nameControlProps,
+                    nameIsDynamic ? LocatorRiskLevel.High : LocatorRiskLevel.Medium);
+
                 if (elementInfo.IndexInParent.HasValue)
                 {
-                    strategies.Add(new ElementLocatorStrategy
+                    var nameControlIndexProps = new Dictionary<string, string>(nameControlProps)
                     {
-                        Name = "Name + ControlType + Index",
-                        Description = $"Name: '{elementInfo.Name}' + ControlType: '{elementInfo.ControlType}' + Index: {elementInfo.IndexInParent}",
-                        Type = LocatorType.NameAndControlTypeAndIndex,
-                        Properties = new Dictionary<string, string>
-                        {
-                            ["Name"] = elementInfo.Name,
-                            ["ControlType"] = elementInfo.ControlType,
-                            ["Index"] = elementInfo.IndexInParent.Value.ToString()
-                        }
-                    });
+                        ["Index"] = elementInfo.IndexInParent.Value.ToString()
+                    };
+
+                    AddStrategy(
+                        "Name + ControlType + Index",
+                        $"Name: '{elementInfo.Name}' + ControlType: '{elementInfo.ControlType}' + Index: {elementInfo.IndexInParent}",
+                        LocatorType.NameAndControlTypeAndIndex,
+                        nameControlIndexProps,
+                        nameIsDynamic ? LocatorRiskLevel.High : LocatorRiskLevel.Medium);
                 }
             }
 
-            // Name + Parent.Name
             if (!string.IsNullOrEmpty(elementInfo.ParentName))
             {
-                strategies.Add(new ElementLocatorStrategy
+                var nameParentProps = new Dictionary<string, string>(baseProperties)
                 {
-                    Name = "Name + Parent.Name",
-                    Description = $"Name: '{elementInfo.Name}' + Parent.Name: '{elementInfo.ParentName}'",
-                    Type = LocatorType.NameAndParent,
-                    Properties = new Dictionary<string, string>
-                    {
-                        ["Name"] = elementInfo.Name,
-                        ["ParentName"] = elementInfo.ParentName
-                    }
-                });
+                    ["ParentName"] = elementInfo.ParentName
+                };
+                if (!string.IsNullOrEmpty(normalizedParentName) && !string.Equals(normalizedParentName, elementInfo.ParentName, StringComparison.Ordinal))
+                {
+                    nameParentProps["NormalizedParentName"] = normalizedParentName!;
+                }
 
-                // Name + Parent + IndexInParent (duplicate name çözümü)
+                AddStrategy(
+                    "Name + Parent.Name",
+                    $"Name: '{elementInfo.Name}' + Parent.Name: '{elementInfo.ParentName}'",
+                    LocatorType.NameAndParent,
+                    nameParentProps,
+                    (nameIsDynamic || parentNameIsDynamic) ? LocatorRiskLevel.High : LocatorRiskLevel.Medium);
+
                 if (elementInfo.IndexInParent.HasValue)
                 {
-                    strategies.Add(new ElementLocatorStrategy
+                    var nameParentIndexProps = new Dictionary<string, string>(nameParentProps)
                     {
-                        Name = "Name + Parent + Index",
-                        Description = $"Name: '{elementInfo.Name}' + Parent: '{elementInfo.ParentName}' + Index: {elementInfo.IndexInParent}",
-                        Type = LocatorType.NameAndParentAndIndex,
-                        Properties = new Dictionary<string, string>
-                        {
-                            ["Name"] = elementInfo.Name,
-                            ["ParentName"] = elementInfo.ParentName,
-                            ["Index"] = elementInfo.IndexInParent.Value.ToString()
-                        }
-                    });
+                        ["Index"] = elementInfo.IndexInParent.Value.ToString()
+                    };
+
+                    AddStrategy(
+                        "Name + Parent + Index",
+                        $"Name: '{elementInfo.Name}' + Parent: '{elementInfo.ParentName}' + Index: {elementInfo.IndexInParent}",
+                        LocatorType.NameAndParentAndIndex,
+                        nameParentIndexProps,
+                        (nameIsDynamic || parentNameIsDynamic) ? LocatorRiskLevel.High : LocatorRiskLevel.Medium);
                 }
             }
         }
 
-        // 3. ClassName
+        // ClassName tabanlı stratejiler
         if (!string.IsNullOrEmpty(elementInfo.ClassName))
         {
-            strategies.Add(new ElementLocatorStrategy
-            {
-                Name = "ClassName",
-                Description = $"ClassName: '{elementInfo.ClassName}'",
-                Type = LocatorType.ClassName,
-                Properties = new Dictionary<string, string>
-                {
-                    ["ClassName"] = elementInfo.ClassName
-                }
-            });
+            AddStrategy(
+                "ClassName",
+                $"ClassName: '{elementInfo.ClassName}'",
+                LocatorType.ClassName,
+                new Dictionary<string, string> { ["ClassName"] = elementInfo.ClassName },
+                LocatorRiskLevel.Medium);
 
-            // ClassName + Index
             if (elementInfo.IndexInParent.HasValue)
             {
-                strategies.Add(new ElementLocatorStrategy
-                {
-                    Name = "ClassName + Index",
-                    Description = $"ClassName: '{elementInfo.ClassName}' + Index: {elementInfo.IndexInParent}",
-                    Type = LocatorType.ClassNameAndIndex,
-                    Properties = new Dictionary<string, string>
+                AddStrategy(
+                    "ClassName + Index",
+                    $"ClassName: '{elementInfo.ClassName}' + Index: {elementInfo.IndexInParent}",
+                    LocatorType.ClassNameAndIndex,
+                    new Dictionary<string, string>
                     {
                         ["ClassName"] = elementInfo.ClassName,
                         ["Index"] = elementInfo.IndexInParent.Value.ToString()
-                    }
-                });
+                    },
+                    LocatorRiskLevel.Medium);
             }
         }
 
-        // 4. ElementPath
+        // ElementPath / TreePath
         if (!string.IsNullOrEmpty(elementInfo.ElementPath))
         {
-            strategies.Add(new ElementLocatorStrategy
-            {
-                Name = "ElementPath",
-                Description = $"ElementPath: '{elementInfo.ElementPath}'",
-                Type = LocatorType.ElementPath,
-                Properties = new Dictionary<string, string>
-                {
-                    ["ElementPath"] = elementInfo.ElementPath
-                }
-            });
+            AddStrategy(
+                "ElementPath",
+                $"ElementPath: '{elementInfo.ElementPath}'",
+                LocatorType.ElementPath,
+                new Dictionary<string, string> { ["ElementPath"] = elementInfo.ElementPath },
+                LocatorRiskLevel.Low);
         }
 
-        // 5. TreePath
         if (!string.IsNullOrEmpty(elementInfo.TreePath))
         {
-            strategies.Add(new ElementLocatorStrategy
-            {
-                Name = "TreePath",
-                Description = $"TreePath: '{elementInfo.TreePath}'",
-                Type = LocatorType.TreePath,
-                Properties = new Dictionary<string, string>
-                {
-                    ["TreePath"] = elementInfo.TreePath
-                }
-            });
+            AddStrategy(
+                "TreePath",
+                $"TreePath: '{elementInfo.TreePath}'",
+                LocatorType.TreePath,
+                new Dictionary<string, string> { ["TreePath"] = elementInfo.TreePath },
+                LocatorRiskLevel.Medium);
         }
 
-        // 6. XPath (Web için)
+        // Web tabanlı stratejiler
         if (!string.IsNullOrEmpty(elementInfo.XPath))
         {
-            strategies.Add(new ElementLocatorStrategy
-            {
-                Name = "XPath",
-                Description = $"XPath: '{elementInfo.XPath}'",
-                Type = LocatorType.XPath,
-                Properties = new Dictionary<string, string>
-                {
-                    ["XPath"] = elementInfo.XPath
-                }
-            });
+            AddStrategy(
+                "XPath",
+                $"XPath: '{elementInfo.XPath}'",
+                LocatorType.XPath,
+                new Dictionary<string, string> { ["XPath"] = elementInfo.XPath },
+                LocatorRiskLevel.Low);
         }
 
-        // 7. CSS Selector (Web için)
         if (!string.IsNullOrEmpty(elementInfo.CssSelector))
         {
-            strategies.Add(new ElementLocatorStrategy
-            {
-                Name = "CSS Selector",
-                Description = $"CSS: '{elementInfo.CssSelector}'",
-                Type = LocatorType.CssSelector,
-                Properties = new Dictionary<string, string>
-                {
-                    ["CssSelector"] = elementInfo.CssSelector
-                }
-            });
+            AddStrategy(
+                "CSS Selector",
+                $"CSS: '{elementInfo.CssSelector}'",
+                LocatorType.CssSelector,
+                new Dictionary<string, string> { ["CssSelector"] = elementInfo.CssSelector },
+                LocatorRiskLevel.Medium);
         }
 
-        // 8. HTML ID (Web için)
         if (!string.IsNullOrEmpty(elementInfo.HtmlId))
         {
-            strategies.Add(new ElementLocatorStrategy
-            {
-                Name = "HTML Id",
-                Description = $"HTML Id: '{elementInfo.HtmlId}'",
-                Type = LocatorType.HtmlId,
-                Properties = new Dictionary<string, string>
-                {
-                    ["HtmlId"] = elementInfo.HtmlId
-                }
-            });
+            AddStrategy(
+                "HTML Id",
+                $"HTML Id: '{elementInfo.HtmlId}'",
+                LocatorType.HtmlId,
+                new Dictionary<string, string> { ["HtmlId"] = elementInfo.HtmlId },
+                LocatorRiskLevel.Low);
         }
 
-        // 9. Playwright Selectors (JSON format - Smart Element Recorder)
+        // Playwright selector'lar
         if (elementInfo.OtherAttributes != null &&
             elementInfo.OtherAttributes.TryGetValue("PlaywrightSelectorsJson", out var selectorsJson) &&
             !string.IsNullOrEmpty(selectorsJson))
@@ -243,7 +233,6 @@ public class ElementLocatorTester
                 var selectors = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(selectorsJson);
                 if (selectors != null)
                 {
-                    // RowIndex bilgisi al
                     int? rowIndex = null;
                     if (elementInfo.OtherAttributes.TryGetValue("PlaywrightRowIndex", out var rowIndexStr) &&
                         int.TryParse(rowIndexStr, out var rowIndexValue))
@@ -251,11 +240,9 @@ public class ElementLocatorTester
                         rowIndex = rowIndexValue;
                     }
 
-                    // TableSelector bilgisi al
                     string? tableSelector = null;
                     elementInfo.OtherAttributes.TryGetValue("PlaywrightTableSelector", out tableSelector);
 
-                    // Her selector için bir strateji oluştur
                     foreach (var kvp in selectors)
                     {
                         if (string.IsNullOrWhiteSpace(kvp.Value))
@@ -277,13 +264,17 @@ public class ElementLocatorTester
                             properties["TableSelector"] = tableSelector;
                         }
 
-                        strategies.Add(new ElementLocatorStrategy
-                        {
-                            Name = $"Playwright {kvp.Key}",
-                            Description = $"Playwright selector ({kvp.Key}): {kvp.Value}",
-                            Type = LocatorType.PlaywrightSelector,
-                            Properties = properties
-                        });
+                        var risk = kvp.Key.Equals("table-row", StringComparison.OrdinalIgnoreCase) ||
+                                   kvp.Key.Equals("row-index", StringComparison.OrdinalIgnoreCase)
+                                   ? LocatorRiskLevel.Medium
+                                   : LocatorRiskLevel.Low;
+
+                        AddStrategy(
+                            $"Playwright {kvp.Key}",
+                            $"Playwright selector ({kvp.Key}): {kvp.Value}",
+                            LocatorType.PlaywrightSelector,
+                            properties,
+                            risk);
                     }
                 }
             }
@@ -292,35 +283,29 @@ public class ElementLocatorTester
                 DebugLogger.Log($"[GenerateStrategies] PlaywrightSelectorsJson parse hatası: {ex.Message}");
             }
         }
-        // Fallback: Eski format PlaywrightSelector (backward compatibility)
         else if (!string.IsNullOrEmpty(elementInfo.PlaywrightSelector))
         {
-            strategies.Add(new ElementLocatorStrategy
-            {
-                Name = "Playwright Selector",
-                Description = $"Playwright: '{elementInfo.PlaywrightSelector}'",
-                Type = LocatorType.PlaywrightSelector,
-                Properties = new Dictionary<string, string>
-                {
-                    ["Selector"] = elementInfo.PlaywrightSelector
-                }
-            });
+            AddStrategy(
+                "Playwright Selector",
+                $"Playwright: '{elementInfo.PlaywrightSelector}'",
+                LocatorType.PlaywrightSelector,
+                new Dictionary<string, string> { ["Selector"] = elementInfo.PlaywrightSelector },
+                LocatorRiskLevel.Low);
         }
 
-        // 10. Koordinat (son çare)
+        // Koordinat (son çare)
         if (elementInfo.X.HasValue && elementInfo.Y.HasValue)
         {
-            strategies.Add(new ElementLocatorStrategy
-            {
-                Name = "Koordinat (Son Çare)",
-                Description = $"X: {elementInfo.X}, Y: {elementInfo.Y}",
-                Type = LocatorType.Coordinates,
-                Properties = new Dictionary<string, string>
+            AddStrategy(
+                "Koordinat (Son Çare)",
+                $"X: {elementInfo.X}, Y: {elementInfo.Y}",
+                LocatorType.Coordinates,
+                new Dictionary<string, string>
                 {
                     ["X"] = elementInfo.X.Value.ToString(),
                     ["Y"] = elementInfo.Y.Value.ToString()
-                }
-            });
+                },
+                LocatorRiskLevel.High);
         }
 
         return strategies;
@@ -445,6 +430,23 @@ public class ElementLocatorTester
             DebugLogger.Log("[ElementLocator] ⚠ Container içinde bulunamadı, Window'da aranacak...");
         }
 
+        // Ancestor scope: Tab/Sayfa/Bölüm bilgisi ile daralt
+        if (elementInfo?.Ancestors != null && elementInfo.Ancestors.Count > 0 && targetWindow != null)
+        {
+            DebugLogger.Log("[ElementLocator] [Level Ancestor] Ancestor scope içinde aranıyor...");
+            var ancestorScope = FindAncestorScope(elementInfo, targetWindow);
+            if (ancestorScope != null)
+            {
+                var ancestorResult = FindByStrategyInScope(strategy, ancestorScope);
+                if (ancestorResult != null)
+                {
+                    DebugLogger.Log("[ElementLocator] ✅ Ancestor scope içinde BULUNDU!");
+                    return ancestorResult;
+                }
+                DebugLogger.Log("[ElementLocator] ⚠ Ancestor scope içinde bulunamadı, diğer seviyelere geçiliyor...");
+            }
+        }
+
         // Level 2: Window içinde ara (orta kapsam)
         if (targetWindow != null)
         {
@@ -511,7 +513,8 @@ public class ElementLocatorTester
                 return FindByAutomationId(strategy.Properties["AutomationId"], searchRoot);
 
             case LocatorType.Name:
-                return FindByName(strategy.Properties["Name"], searchRoot);
+                strategy.Properties.TryGetValue("NormalizedName", out var normalizedName);
+                return FindByName(strategy.Properties["Name"], searchRoot, normalizedName);
 
             case LocatorType.ClassName:
                 return FindByClassName(strategy.Properties["ClassName"], searchRoot);
@@ -521,27 +524,43 @@ public class ElementLocatorTester
                     strategy.Properties["AutomationId"],
                     strategy.Properties["ControlType"], searchRoot);
 
-            case LocatorType.NameAndControlType:
-                return FindByNameAndControlType(
-                    strategy.Properties["Name"],
-                    strategy.Properties["ControlType"], searchRoot);
-
             case LocatorType.NameAndParent:
+                strategy.Properties.TryGetValue("NormalizedName", out var normalizedNameForParent);
+                strategy.Properties.TryGetValue("NormalizedParentName", out var normalizedParentName);
                 return FindByNameAndParent(
                     strategy.Properties["Name"],
-                    strategy.Properties["ParentName"], searchRoot);
+                    strategy.Properties["ParentName"],
+                    searchRoot,
+                    normalizedNameForParent,
+                    normalizedParentName);
+
+            case LocatorType.NameAndControlType:
+                strategy.Properties.TryGetValue("NormalizedName", out var normalizedNameForControl);
+                return FindByNameAndControlType(
+                    strategy.Properties["Name"],
+                    strategy.Properties["ControlType"],
+                    searchRoot,
+                    normalizedNameForControl);
 
             case LocatorType.NameAndControlTypeAndIndex:
+                strategy.Properties.TryGetValue("NormalizedName", out var normalizedNameForControlIndex);
                 return FindByNameAndControlTypeAndIndex(
                     strategy.Properties["Name"],
                     strategy.Properties["ControlType"],
-                    int.Parse(strategy.Properties["Index"]), searchRoot);
+                    int.Parse(strategy.Properties["Index"]),
+                    searchRoot,
+                    normalizedNameForControlIndex);
 
             case LocatorType.NameAndParentAndIndex:
+                strategy.Properties.TryGetValue("NormalizedName", out var normalizedNameForParentIndex);
+                strategy.Properties.TryGetValue("NormalizedParentName", out var normalizedParentNameIndex);
                 return FindByNameAndParentAndIndex(
                     strategy.Properties["Name"],
                     strategy.Properties["ParentName"],
-                    int.Parse(strategy.Properties["Index"]), searchRoot);
+                    int.Parse(strategy.Properties["Index"]),
+                    searchRoot,
+                    normalizedNameForParentIndex,
+                    normalizedParentNameIndex);
 
             case LocatorType.ClassNameAndIndex:
                 return FindByClassNameAndIndex(
@@ -590,6 +609,9 @@ public class ElementLocatorTester
                 return null;
             }
 
+            var containerNormalizedName = elementInfo.NormalizedContainerName ?? DynamicTextNormalizer.Normalize(elementInfo.ContainerName);
+            var containerNameIsDynamic = DynamicTextNormalizer.IsLikelyDynamic(elementInfo.ContainerName, containerNormalizedName);
+
             DebugLogger.Log($"[FindTargetContainer] Container aranıyor: {elementInfo.ContainerControlType}");
 
             // Container ControlType'ı parse et
@@ -627,8 +649,9 @@ public class ElementLocatorTester
                             }
 
                             // Name match?
-                            if (!string.IsNullOrEmpty(elementInfo.ContainerName) &&
-                                child.Current.Name == elementInfo.ContainerName &&
+                            if (!containerNameIsDynamic &&
+                                !string.IsNullOrEmpty(elementInfo.ContainerName) &&
+                                DynamicTextNormalizer.AreEquivalent(elementInfo.ContainerName, child.Current.Name) &&
                                 child.Current.ControlType == containerControlType)
                             {
                                 DebugLogger.Log($"[FindTargetContainer] ✅ INDEX bazlı arama ile BULUNDU! (Index: {index}, Name: {elementInfo.ContainerName})");
@@ -681,7 +704,7 @@ public class ElementLocatorTester
             }
 
             // 2. Name ile ara (değişken olabilir)
-            if (!string.IsNullOrEmpty(elementInfo.ContainerName))
+            if (!containerNameIsDynamic && !string.IsNullOrEmpty(elementInfo.ContainerName))
             {
                 DebugLogger.Log($"[FindTargetContainer] ContainerName ile aranıyor: {elementInfo.ContainerName}");
 
@@ -691,7 +714,7 @@ public class ElementLocatorTester
                     new PropertyCondition(AutomationElement.ControlTypeProperty, containerControlType)
                 );
                 var container = FindWithTimeout(targetWindow, TreeScope.Descendants, condition, 1000);
-                if (container != null)
+                if (container != null && DynamicTextNormalizer.AreEquivalent(elementInfo.ContainerName, container.Current.Name))
                 {
                     DebugLogger.Log("[FindTargetContainer] ✓ Name ile bulundu");
                     return container;
@@ -700,11 +723,26 @@ public class ElementLocatorTester
                 // Sadece ControlType ile ara (Name değişmiş olabilir ama aynı tipte container)
                 var typeCondition = new PropertyCondition(AutomationElement.ControlTypeProperty, containerControlType);
                 var containers = FindAllWithRawView(targetWindow, TreeScope.Descendants, typeCondition);
-                if (containers != null && containers.Count == 1)
+                if (containers != null)
                 {
-                    // Tek container varsa onu kullan
-                    DebugLogger.Log("[FindTargetContainer] ✓ Tek container bulundu (ControlType ile)");
-                    return containers[0];
+                    if (containers.Count == 1)
+                    {
+                        DebugLogger.Log("[FindTargetContainer] ✓ Tek container bulundu (ControlType ile)");
+                        return containers[0];
+                    }
+
+                    foreach (AutomationElement candidate in containers)
+                    {
+                        try
+                        {
+                            if (DynamicTextNormalizer.AreEquivalent(elementInfo.ContainerName, candidate.Current.Name))
+                            {
+                                DebugLogger.Log("[FindTargetContainer] ✓ Name normalize eşleşmesi ile bulundu");
+                                return candidate;
+                            }
+                        }
+                        catch { }
+                    }
                 }
 
                 DebugLogger.Log("[FindTargetContainer] ✗ Name ile bulunamadı");
@@ -746,6 +784,165 @@ public class ElementLocatorTester
         }
 
         return null;
+    }
+
+    private static AutomationElement? FindAncestorScope(UIElementInfo elementInfo, AutomationElement window)
+    {
+        try
+        {
+            if (elementInfo.Ancestors == null || elementInfo.Ancestors.Count == 0)
+            {
+                return null;
+            }
+
+            var ordered = elementInfo.Ancestors
+                .OrderBy(a => a.Level)
+                .ToList();
+
+            var candidateList = new List<AncestorInfo>();
+            candidateList.AddRange(ordered.Where(IsTabCandidate));
+            candidateList.AddRange(ordered.Where(IsSectionCandidate));
+            candidateList.AddRange(ordered.Where(IsDocumentCandidate));
+
+            // En azından doğrudan parent ve grandparent'ı da dene
+            candidateList.AddRange(ordered.Where(a => a.Level <= 1));
+
+            var seen = new HashSet<string>();
+            foreach (var ancestor in candidateList)
+            {
+                var key = $"{ancestor.Level}|{ancestor.AutomationId}|{ancestor.Name}|{ancestor.ControlType}";
+                if (!seen.Add(key))
+                    continue;
+
+                DebugLogger.Log($"[FindAncestorScope] Aday: Level={ancestor.Level}, CT={ancestor.ControlType}, Name={ancestor.Name}");
+                var found = FindAncestorElement(window, ancestor);
+                if (found != null)
+                {
+                    DebugLogger.Log("[FindAncestorScope] ✓ Aday bulundu");
+                    return found;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            DebugLogger.Log($"[FindAncestorScope] Hata: {ex.Message}");
+        }
+
+        return null;
+    }
+
+    private static bool IsTabCandidate(AncestorInfo ancestor)
+    {
+        var controlType = ancestor.ControlType ?? string.Empty;
+        return controlType.Contains("TabItem", StringComparison.OrdinalIgnoreCase) ||
+               controlType.EndsWith("Tab", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsSectionCandidate(AncestorInfo ancestor)
+    {
+        var controlType = ancestor.ControlType ?? string.Empty;
+        return controlType.Contains("Group", StringComparison.OrdinalIgnoreCase) ||
+               controlType.Contains("Pane", StringComparison.OrdinalIgnoreCase) ||
+               controlType.Contains("Custom", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsDocumentCandidate(AncestorInfo ancestor)
+    {
+        var controlType = ancestor.ControlType ?? string.Empty;
+        return controlType.Contains("Document", StringComparison.OrdinalIgnoreCase) ||
+               controlType.Contains("Window", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static AutomationElement? FindAncestorElement(AutomationElement window, AncestorInfo ancestor)
+    {
+        try
+        {
+            var normalizedAncestorName = ancestor.NormalizedName ?? DynamicTextNormalizer.Normalize(ancestor.Name);
+            var conditions = new List<Condition>();
+
+            if (!string.IsNullOrEmpty(ancestor.AutomationId))
+            {
+                conditions.Add(new PropertyCondition(AutomationElement.AutomationIdProperty, ancestor.AutomationId));
+            }
+
+            if (!string.IsNullOrEmpty(ancestor.Name))
+            {
+                conditions.Add(new PropertyCondition(AutomationElement.NameProperty, ancestor.Name));
+            }
+
+            if (!string.IsNullOrEmpty(ancestor.ControlType))
+            {
+                var controlType = ParseControlType(ancestor.ControlType);
+                if (controlType != null)
+                {
+                    conditions.Add(new PropertyCondition(AutomationElement.ControlTypeProperty, controlType));
+                }
+            }
+
+            if (!string.IsNullOrEmpty(ancestor.ClassName))
+            {
+                conditions.Add(new PropertyCondition(AutomationElement.ClassNameProperty, ancestor.ClassName));
+            }
+
+            if (conditions.Count == 0)
+            {
+                return null;
+            }
+
+            Condition searchCondition = conditions.Count == 1
+                ? conditions[0]
+                : new AndCondition(conditions.ToArray());
+
+            var result = FindWithTimeout(window, TreeScope.Descendants, searchCondition, 1500);
+            if (result != null && !string.IsNullOrEmpty(ancestor.Name))
+            {
+                if (!DynamicTextNormalizer.AreEquivalent(ancestor.Name, result.Current.Name))
+                {
+                    result = null;
+                }
+            }
+
+            if (result != null)
+            {
+                return result;
+            }
+
+            if (!string.IsNullOrEmpty(normalizedAncestorName))
+            {
+                Condition scopeCondition = Condition.TrueCondition;
+                if (!string.IsNullOrEmpty(ancestor.ControlType))
+                {
+                    var controlType = ParseControlType(ancestor.ControlType);
+                    if (controlType != null)
+                    {
+                        scopeCondition = new PropertyCondition(AutomationElement.ControlTypeProperty, controlType);
+                    }
+                }
+
+                var candidates = FindAllWithRawView(window, TreeScope.Descendants, scopeCondition);
+                if (candidates != null)
+                {
+                    foreach (AutomationElement candidate in candidates)
+                    {
+                        try
+                        {
+                            if (DynamicTextNormalizer.AreEquivalent(ancestor.Name ?? normalizedAncestorName, candidate.Current.Name))
+                            {
+                                return candidate;
+                            }
+                        }
+                        catch { }
+                    }
+                }
+            }
+
+            return null;
+        }
+        catch (Exception ex)
+        {
+            DebugLogger.Log($"[FindAncestorElement] Hata: {ex.Message}");
+            return null;
+        }
     }
 
     /// <summary>
@@ -999,11 +1196,20 @@ public class ElementLocatorTester
         return result;
     }
 
-    private static AutomationElement? FindByName(string name, AutomationElement searchRoot)
+    private static AutomationElement? FindByName(string name, AutomationElement searchRoot, string? normalizedName = null)
     {
         DebugLogger.Log($"    [FindByName] Aranıyor: '{name}'");
         var condition = new PropertyCondition(AutomationElement.NameProperty, name);
         var result = FindWithTimeout(searchRoot, TreeScope.Descendants, condition);
+        if (result != null && normalizedName != null)
+        {
+            if (!DynamicTextNormalizer.AreEquivalent(name, result.Current.Name) &&
+                !DynamicTextNormalizer.AreEquivalent(normalizedName, result.Current.Name))
+            {
+                DebugLogger.Log("    [FindByName] ⚠ Normalize eşleşmesi başarısız, sonuç eleniyor");
+                result = null;
+            }
+        }
         DebugLogger.Log($"    [FindByName] Sonuç: {(result != null ? "BULUNDU ✓" : "BULUNAMADI ✗")}");
         return result;
     }
@@ -1026,7 +1232,7 @@ public class ElementLocatorTester
         return FindWithTimeout(searchRoot, TreeScope.Descendants, condition);
     }
 
-    private static AutomationElement? FindByNameAndControlType(string name, string controlTypeStr, AutomationElement searchRoot)
+    private static AutomationElement? FindByNameAndControlType(string name, string controlTypeStr, AutomationElement searchRoot, string? normalizedName = null)
     {
         var controlType = ParseControlType(controlTypeStr);
         if (controlType == null) return null;
@@ -1035,23 +1241,57 @@ public class ElementLocatorTester
             new PropertyCondition(AutomationElement.NameProperty, name),
             new PropertyCondition(AutomationElement.ControlTypeProperty, controlType)
         );
-        return FindWithTimeout(searchRoot, TreeScope.Descendants, condition);
+        var result = FindWithTimeout(searchRoot, TreeScope.Descendants, condition);
+
+        if (result != null && normalizedName != null)
+        {
+            if (!DynamicTextNormalizer.AreEquivalent(name, result.Current.Name) &&
+                !DynamicTextNormalizer.AreEquivalent(normalizedName, result.Current.Name))
+            {
+                DebugLogger.Log("    [FindByNameAndControlType] ⚠ Normalize eşleşmesi başarısız, sonuç eleniyor");
+                return null;
+            }
+        }
+
+        return result;
     }
 
-    private static AutomationElement? FindByNameAndParent(string name, string parentName, AutomationElement searchRoot)
+    private static AutomationElement? FindByNameAndParent(string name, string parentName, AutomationElement searchRoot, string? normalizedName = null, string? normalizedParentName = null)
     {
-        // Önce parent'ı bul
         var parentCondition = new PropertyCondition(AutomationElement.NameProperty, parentName);
         var parent = FindWithTimeout(searchRoot, TreeScope.Descendants, parentCondition);
 
+        if (parent == null && normalizedParentName != null)
+        {
+            // Normalize edilmiş parent adı ile tekrar dene
+            parentCondition = new PropertyCondition(AutomationElement.NameProperty, normalizedParentName);
+            parent = FindWithTimeout(searchRoot, TreeScope.Descendants, parentCondition);
+        }
+
         if (parent == null) return null;
 
-        // Parent içinde child'ı bul
         var childCondition = new PropertyCondition(AutomationElement.NameProperty, name);
-        return FindWithTimeout(parent, TreeScope.Descendants, childCondition);
+        var child = FindWithTimeout(parent, TreeScope.Descendants, childCondition);
+
+        if (child != null && normalizedName != null)
+        {
+            if (!DynamicTextNormalizer.AreEquivalent(name, child.Current.Name) &&
+                !DynamicTextNormalizer.AreEquivalent(normalizedName, child.Current.Name))
+            {
+                child = null;
+            }
+        }
+
+        if (child == null && normalizedName != null)
+        {
+            childCondition = new PropertyCondition(AutomationElement.NameProperty, normalizedName);
+            child = FindWithTimeout(parent, TreeScope.Descendants, childCondition);
+        }
+
+        return child;
     }
 
-    private static AutomationElement? FindByNameAndControlTypeAndIndex(string name, string controlTypeStr, int index, AutomationElement searchRoot)
+    private static AutomationElement? FindByNameAndControlTypeAndIndex(string name, string controlTypeStr, int index, AutomationElement searchRoot, string? normalizedName = null)
     {
         // Name + ControlType + IndexInParent ile bul
         // Bu duplicate name problemini çözer (örn: birden fazla "1" button varsa)
@@ -1098,7 +1338,12 @@ public class ElementLocatorTester
                                 {
                                     if (i == index)
                                     {
-                                        return element; // Index eşleşti!
+                                        if (normalizedName == null ||
+                                            DynamicTextNormalizer.AreEquivalent(name, element.Current.Name) ||
+                                            DynamicTextNormalizer.AreEquivalent(normalizedName, element.Current.Name))
+                                        {
+                                            return element; // Index eşleşti!
+                                        }
                                     }
                                     break;
                                 }
@@ -1114,7 +1359,7 @@ public class ElementLocatorTester
         return null;
     }
 
-    private static AutomationElement? FindByNameAndParentAndIndex(string name, string parentName, int index, AutomationElement searchRoot)
+    private static AutomationElement? FindByNameAndParentAndIndex(string name, string parentName, int index, AutomationElement searchRoot, string? normalizedName = null, string? normalizedParentName = null)
     {
         // Name + Parent + IndexInParent ile bul
         // Bu duplicate name problemini çözer (örn: birden fazla "1" varsa ama farklı parent'larda)
@@ -1123,6 +1368,12 @@ public class ElementLocatorTester
             // Önce parent'ı bul
             var parentCondition = new PropertyCondition(AutomationElement.NameProperty, parentName);
             var parent = FindWithTimeout(searchRoot, TreeScope.Descendants, parentCondition);
+
+            if (parent == null && normalizedParentName != null)
+            {
+                parentCondition = new PropertyCondition(AutomationElement.NameProperty, normalizedParentName);
+                parent = FindWithTimeout(searchRoot, TreeScope.Descendants, parentCondition);
+            }
 
             if (parent == null) return null;
 
@@ -1145,9 +1396,14 @@ public class ElementLocatorTester
                         {
                             if (Automation.Compare(siblings[i], child))
                             {
-                                if (i == index && child.Current.Name == name)
+                                if (i == index)
                                 {
-                                    return child; // Index ve Name eşleşti!
+                                    if (normalizedName == null ||
+                                        DynamicTextNormalizer.AreEquivalent(name, child.Current.Name) ||
+                                        DynamicTextNormalizer.AreEquivalent(normalizedName, child.Current.Name))
+                                    {
+                                        return child; // Index ve Name eşleşti!
+                                    }
                                 }
                                 break;
                             }
@@ -1164,8 +1420,13 @@ public class ElementLocatorTester
 
     private static ControlType? ParseControlType(string controlTypeStr)
     {
+        if (string.IsNullOrWhiteSpace(controlTypeStr))
+        {
+            return null;
+        }
+
         // "ControlType.Button" formatından "Button" çıkar
-        var typeName = controlTypeStr.Replace("ControlType.", "");
+        var typeName = controlTypeStr.Replace("ControlType.", "").Trim();
 
         return typeName switch
         {
@@ -1180,7 +1441,16 @@ public class ElementLocatorTester
             "Window" => ControlType.Window,
             "Pane" => ControlType.Pane,
             "MenuItem" => ControlType.MenuItem,
+            "Menu" => ControlType.Menu,
             "DataItem" => ControlType.DataItem,
+            "TabItem" => ControlType.TabItem,
+            "Tab" => ControlType.Tab,
+            "Document" => ControlType.Document,
+            "Group" => ControlType.Group,
+            "TreeItem" => ControlType.TreeItem,
+            "Tree" => ControlType.Tree,
+            "Hyperlink" => ControlType.Hyperlink,
+            "Custom" => ControlType.Custom,
             _ => null
         };
     }

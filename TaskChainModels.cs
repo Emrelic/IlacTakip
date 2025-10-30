@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
 namespace MedulaOtomasyon;
@@ -96,6 +97,7 @@ public class UIElementInfo
     public string? WindowId { get; set; }
     public string? WindowName { get; set; }
     public string? WindowTitle { get; set; }
+    public string? NormalizedWindowTitle { get; set; }
     public string? WindowClassName { get; set; }
     public string? WindowProcessName { get; set; }
     public int? WindowProcessId { get; set; }
@@ -103,6 +105,7 @@ public class UIElementInfo
     // === CONTAINER BİLGİLERİ (Element'in immediate parent container'ı - Pane, Group, vb) ===
     public string? ContainerAutomationId { get; set; }
     public string? ContainerName { get; set; }
+    public string? NormalizedContainerName { get; set; }
     public string? ContainerClassName { get; set; }
     public string? ContainerControlType { get; set; }
     public string? ContainerRuntimeId { get; set; }
@@ -111,6 +114,7 @@ public class UIElementInfo
     public string? AutomationId { get; set; }
     public string? RuntimeId { get; set; } // Sistem tarafından atanmış geçici ID
     public string? Name { get; set; }
+    public string? NormalizedName { get; set; }
     public string? ClassName { get; set; }
     public string? ControlType { get; set; }
     public string? FrameworkId { get; set; } // "Win32", "WPF", "InternetExplorer", vb
@@ -142,6 +146,7 @@ public class UIElementInfo
     public string? ParentChain { get; set; } // "Window > Pane > Button"
     public string? ParentAutomationId { get; set; }
     public string? ParentName { get; set; }
+    public string? NormalizedParentName { get; set; }
     public string? ParentClassName { get; set; }
 
     // === WEB/HTML ÖZELLİKLERİ (MSHTML/Playwright) ===
@@ -202,8 +207,43 @@ public class UIElementInfo
     public string? SiblingContext { get; set; } // Sibling elementlerin özeti (Name "1" için context)
     public string? GrandParentName { get; set; } // 2. seviye parent (daha fazla context)
     public string? GrandParentAutomationId { get; set; } // GrandParent'ın AutomationId'si
+    public string? NormalizedGrandParentName { get; set; }
     public string? ComputedCssPath { get; set; } // Hesaplanmış tam CSS path (body > div > span gibi)
     public int? SiblingCount { get; set; } // Parent altındaki toplam sibling sayısı
+
+    // === BAĞLAM (Sayfa/Sekme/Bölüm) ===
+    public string? PageName { get; set; } // En yakın sayfa/doküman adı
+    public string? NormalizedPageName { get; set; }
+    public string? PageAutomationId { get; set; }
+    public string? PageControlType { get; set; }
+
+    public string? TabName { get; set; }
+    public string? NormalizedTabName { get; set; }
+    public string? TabAutomationId { get; set; }
+    public string? TabControlType { get; set; }
+
+    public string? SectionName { get; set; }
+    public string? NormalizedSectionName { get; set; }
+    public string? SectionAutomationId { get; set; }
+    public string? SectionControlType { get; set; }
+
+    public List<AncestorInfo>? Ancestors { get; set; }
+}
+
+/// <summary>
+/// UI elementinin parent zincirindeki bir ancestor bilgisini temsil eder
+/// </summary>
+public class AncestorInfo
+{
+    public int Level { get; set; } // 0 = doğrudan parent, 1 = grandparent, vb.
+    public string? Name { get; set; }
+    public string? AutomationId { get; set; }
+    public string? ClassName { get; set; }
+    public string? ControlType { get; set; }
+    public string? FrameworkId { get; set; }
+    public string? NormalizedName { get; set; }
+    public int? IndexInParent { get; set; }
+    public string? BoundingRectangle { get; set; }
 }
 
 /// <summary>
@@ -312,6 +352,7 @@ public class ElementLocatorStrategy
     public bool IsSuccessful { get; set; } // Test başarılı mı?
     public int TestDurationMs { get; set; } // Test süresi (ms)
     public string? ErrorMessage { get; set; } // Hata mesajı varsa
+    public LocatorRiskLevel RiskLevel { get; set; } = LocatorRiskLevel.Unknown;
 
     // Smart Element Recorder için
     public RecordedElement? RecordedElement { get; set; } // Kaydedilmiş element bilgisi
@@ -343,6 +384,14 @@ public enum LocatorType
     TableRowIndex,                  // Tablo ID + Satır Index
     TextContent,                    // Hücre text içeriği
     ClassAndName                    // ClassName + Name kombinasyonu
+}
+
+public enum LocatorRiskLevel
+{
+    Unknown = 0,
+    Low = 1,
+    Medium = 2,
+    High = 3
 }
 
 /// <summary>
