@@ -19,6 +19,7 @@ public class TaskChainExecutor
     private int _currentStepIndex = -1;
     private readonly ExecutionHistoryDatabase _historyDb;
     private readonly ConditionEvaluator _conditionEvaluator;
+    private readonly SmartElementRecorder _smartElementPlayer;
 
     // Settings
     public ExecutionSpeed Speed { get; set; } = ExecutionSpeed.Normal;
@@ -52,6 +53,7 @@ public class TaskChainExecutor
     {
         _historyDb = new ExecutionHistoryDatabase();
         _conditionEvaluator = new ConditionEvaluator();
+        _smartElementPlayer = new SmartElementRecorder();
 
         // Debug logger'ı başlat (element arama sorunlarını tespit için)
         DebugLogger.StartNewSession();
@@ -305,6 +307,31 @@ public class TaskChainExecutor
 
         Log($"Element aranıyor: {step.SelectedStrategy.Name}");
 
+        // Akıllı stratejiler için önce SmartElementRecorder ile dene
+        if (step.SelectedStrategy.RecordedElement != null)
+        {
+            var smartSuccess = await Task.Run(() =>
+            {
+                try
+                {
+                    return _smartElementPlayer.ExecuteLocatorStrategy(step.SelectedStrategy);
+                }
+                catch (Exception ex)
+                {
+                    DebugLogger.Log($"[TaskChainExecutor] Smart strategy execution error: {ex.Message}");
+                    return false;
+                }
+            }, cancellationToken);
+
+            if (smartSuccess)
+            {
+                Log("✓ Akıllı strateji ile element etkileşimi başarıyla gerçekleştirildi.");
+                return;
+            }
+
+            Log("⚠ Akıllı strateji element etkileşimi başarısız oldu, klasik aramaya dönülüyor.");
+        }
+
         // Elementi bul - cancellation token ile timeout uygula
         AutomationElement? element = null;
         using (var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
@@ -315,7 +342,23 @@ public class TaskChainExecutor
 
             try
             {
-                element = await Task.Run(() => FindElementByStrategy(step.UIElement, step.SelectedStrategy), linkedCts.Token);
+                var elementInfo = step.UIElement ??
+                                  (step.SelectedStrategy.RecordedElement != null
+                                      ? SmartElementRecorder.ConvertToUIElementInfo(step.SelectedStrategy.RecordedElement)
+                                      : null);
+
+                if (elementInfo == null)
+                {
+                    throw new InvalidOperationException("UIElement bilgisi oluşturulamadı.");
+                }
+
+                // Eksik UIElement bilgisi varsa, oluşturduğumuz değeri sakla (ileride tekrar kullanım için)
+                if (step.UIElement == null)
+                {
+                    step.UIElement = elementInfo;
+                }
+
+                element = await Task.Run(() => FindElementByStrategy(elementInfo, step.SelectedStrategy), linkedCts.Token);
             }
             catch (OperationCanceledException)
             {
