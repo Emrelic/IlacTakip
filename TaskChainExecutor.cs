@@ -52,6 +52,9 @@ public class TaskChainExecutor
     {
         _historyDb = new ExecutionHistoryDatabase();
         _conditionEvaluator = new ConditionEvaluator();
+
+        // Debug logger'ı başlat (element arama sorunlarını tespit için)
+        DebugLogger.StartNewSession();
     }
 
     /// <summary>
@@ -306,7 +309,9 @@ public class TaskChainExecutor
         AutomationElement? element = null;
         using (var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
         {
-            linkedCts.CancelAfter(TimeSpan.FromSeconds(30)); // 30 saniye timeout
+            // Güçlü stratejiler için daha uzun timeout, zayıf stratejiler için kısa timeout
+            var timeoutSeconds = IsStrongStrategy(step.SelectedStrategy) ? 15 : 10;
+            linkedCts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
 
             try
             {
@@ -320,7 +325,7 @@ public class TaskChainExecutor
                 }
                 else
                 {
-                    throw new TimeoutException("Element arama işlemi 30 saniye içinde tamamlanamadı.");
+                    throw new TimeoutException($"Element arama işlemi {timeoutSeconds} saniye içinde tamamlanamadı.");
                 }
             }
         }
@@ -669,5 +674,24 @@ public class TaskChainExecutor
         }
 
         return -1;
+    }
+
+    /// <summary>
+    /// Stratejinin güçlü/unique olup olmadığını kontrol eder
+    /// </summary>
+    private bool IsStrongStrategy(ElementLocatorStrategy strategy)
+    {
+        return strategy.Type switch
+        {
+            LocatorType.AutomationId => true,
+            LocatorType.AutomationIdAndControlType => true,
+            LocatorType.TreePath => true,
+            LocatorType.ElementPath => true,
+            LocatorType.XPath => true,
+            LocatorType.HtmlId => true,
+            LocatorType.PlaywrightSelector => true,
+            LocatorType.Coordinates => true,
+            _ => false
+        };
     }
 }

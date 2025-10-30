@@ -365,7 +365,7 @@ public class ElementLocatorTester
 
     /// <summary>
     /// Strateji kullanarak elementi bulmayı dener
-    /// MULTI-LEVEL FALLBACK: Container → Window → RootElement
+    /// OPTİMİZE EDİLMİŞ ARAMA: Güçlü stratejiler için direk RootElement, zayıf stratejiler için multi-level fallback
     /// </summary>
     public static AutomationElement? FindElementByStrategy(ElementLocatorStrategy strategy, UIElementInfo? elementInfo = null)
     {
@@ -373,19 +373,40 @@ public class ElementLocatorTester
         DebugLogger.Log("[ElementLocator] ===== ARAMA BAŞLIYOR =====");
         DebugLogger.Log($"[ElementLocator] Strateji: {strategy.Name}");
 
+        // AKILLI STRATEJİ SEÇİMİ:
+        // Güçlü ve unique stratejiler için window/container aramayı atla
+        bool isStrongStrategy = IsStrongStrategy(strategy);
+
+        if (isStrongStrategy)
+        {
+            DebugLogger.Log($"[ElementLocator] 🚀 GÜÇLÜ STRATEJİ TESPİT EDİLDİ - Direkt RootElement'te aranacak");
+
+            // Güçlü stratejiler için direkt RootElement'te ara
+            var strongElement = FindByStrategyInScope(strategy, AutomationElement.RootElement);
+            if (strongElement != null)
+            {
+                DebugLogger.Log("[ElementLocator] ✅ RootElement içinde BULUNDU!");
+                return strongElement;
+            }
+
+            DebugLogger.Log("[ElementLocator] ❌ Element bulunamadı!");
+            return null;
+        }
+
+        // ZAYIF STRATEJİLER İÇİN ESKİ MULTI-LEVEL YAKLAŞIM
         // Container bilgisi varsa önce container'ı bul
         AutomationElement? targetContainer = null;
         AutomationElement? targetWindow = null;
 
         if (elementInfo != null)
         {
-            DebugLogger.Log("[ElementLocator] ElementInfo mevcut:");
+            DebugLogger.Log("[ElementLocator] ElementInfo mevcut (zayıf strateji için scope daraltılacak):");
             DebugLogger.Log($"  - WindowTitle: {elementInfo.WindowTitle ?? "N/A"}");
             DebugLogger.Log($"  - WindowProcessId: {elementInfo.WindowProcessId?.ToString() ?? "N/A"}");
             DebugLogger.Log($"  - ContainerControlType: {elementInfo.ContainerControlType ?? "N/A"}");
             DebugLogger.Log($"  - ContainerName: {elementInfo.ContainerName ?? "N/A"}");
 
-            // 1. ÖNCE WINDOW BUL
+            // 1. ÖNCE WINDOW BUL (timeout'u düşük tut)
             targetWindow = FindTargetWindow(elementInfo);
             if (targetWindow != null)
             {
@@ -448,6 +469,27 @@ public class ElementLocatorTester
 
         DebugLogger.Log("[ElementLocator] ❌ Hiçbir yerde bulunamadı!");
         return null;
+    }
+
+    /// <summary>
+    /// Stratejinin güçlü/unique olup olmadığını kontrol eder
+    /// Güçlü stratejiler window/container aramaya ihtiyaç duymaz
+    /// </summary>
+    private static bool IsStrongStrategy(ElementLocatorStrategy strategy)
+    {
+        // Güçlü stratejiler: Unique identifier'ları olan veya absolute path'leri olan
+        return strategy.Type switch
+        {
+            LocatorType.AutomationId => true,  // AutomationId genelde unique
+            LocatorType.AutomationIdAndControlType => true,  // Daha da spesifik
+            LocatorType.TreePath => true,  // Absolute path
+            LocatorType.ElementPath => true,  // Path bazlı
+            LocatorType.XPath => true,  // Web elementleri için güçlü
+            LocatorType.HtmlId => true,  // HTML ID unique olmalı
+            LocatorType.PlaywrightSelector => true,  // Playwright selector'lar çok güçlü
+            LocatorType.Coordinates => true,  // Koordinatlar absolute
+            _ => false  // Diğerleri (Name, ClassName vs.) zayıf
+        };
     }
 
     /// <summary>
@@ -608,45 +650,64 @@ public class ElementLocatorTester
                 }
             }
 
-            // *** ESKİ STRATEJI: YAVAŞ RECURSIVE ARAMA (Fallback) ***
-            // AutomationId ile ara (en güvenilir)
+            // *** AKILLI CONTAINER ARAMA ***
+            // 1. AutomationId ile ara (en güvenilir)
             if (!string.IsNullOrEmpty(elementInfo.ContainerAutomationId))
             {
                 DebugLogger.Log($"[FindTargetContainer] ContainerAutomationId ile aranıyor: {elementInfo.ContainerAutomationId}");
+
+                // Önce ControlType ile birlikte ara
                 var condition = new AndCondition(
                     new PropertyCondition(AutomationElement.AutomationIdProperty, elementInfo.ContainerAutomationId),
                     new PropertyCondition(AutomationElement.ControlTypeProperty, containerControlType)
                 );
-                var container = FindWithTimeout(targetWindow, TreeScope.Descendants, condition, 5000);
+                var container = FindWithTimeout(targetWindow, TreeScope.Descendants, condition, 1000);
                 if (container != null)
                 {
-                    DebugLogger.Log("[FindTargetContainer] ✓ AutomationId ile bulundu");
+                    DebugLogger.Log("[FindTargetContainer] ✓ AutomationId + ControlType ile bulundu");
                     return container;
                 }
-                else
+
+                // Sadece AutomationId ile ara (ControlType değişmiş olabilir)
+                var idCondition = new PropertyCondition(AutomationElement.AutomationIdProperty, elementInfo.ContainerAutomationId);
+                container = FindWithTimeout(targetWindow, TreeScope.Descendants, idCondition, 1000);
+                if (container != null)
                 {
-                    DebugLogger.Log("[FindTargetContainer] ✗ AutomationId ile bulunamadı");
+                    DebugLogger.Log("[FindTargetContainer] ✓ Sadece AutomationId ile bulundu (ControlType farklı)");
+                    return container;
                 }
+
+                DebugLogger.Log("[FindTargetContainer] ✗ AutomationId ile bulunamadı");
             }
 
-            // Name ile ara
+            // 2. Name ile ara (değişken olabilir)
             if (!string.IsNullOrEmpty(elementInfo.ContainerName))
             {
                 DebugLogger.Log($"[FindTargetContainer] ContainerName ile aranıyor: {elementInfo.ContainerName}");
+
+                // Tam eşleşme
                 var condition = new AndCondition(
                     new PropertyCondition(AutomationElement.NameProperty, elementInfo.ContainerName),
                     new PropertyCondition(AutomationElement.ControlTypeProperty, containerControlType)
                 );
-                var container = FindWithTimeout(targetWindow, TreeScope.Descendants, condition, 5000);
+                var container = FindWithTimeout(targetWindow, TreeScope.Descendants, condition, 1000);
                 if (container != null)
                 {
                     DebugLogger.Log("[FindTargetContainer] ✓ Name ile bulundu");
                     return container;
                 }
-                else
+
+                // Sadece ControlType ile ara (Name değişmiş olabilir ama aynı tipte container)
+                var typeCondition = new PropertyCondition(AutomationElement.ControlTypeProperty, containerControlType);
+                var containers = FindAllWithRawView(targetWindow, TreeScope.Descendants, typeCondition);
+                if (containers != null && containers.Count == 1)
                 {
-                    DebugLogger.Log("[FindTargetContainer] ✗ Name ile bulunamadı");
+                    // Tek container varsa onu kullan
+                    DebugLogger.Log("[FindTargetContainer] ✓ Tek container bulundu (ControlType ile)");
+                    return containers[0];
                 }
+
+                DebugLogger.Log("[FindTargetContainer] ✗ Name ile bulunamadı");
             }
 
             // ClassName ile ara (SON ÇARE - ancak güvenilir değil!)
@@ -730,59 +791,119 @@ public class ElementLocatorTester
         {
             var currentProcessId = Process.GetCurrentProcess().Id;
 
+            // AKILLI ARAMA: Önce tam eşleşme, sonra kısmi eşleşme, sonra alternatif kriterler
+            AutomationElement? foundWindow = null;
+
+            // 1. TAM EŞLEŞME DENEMESİ
             if (!string.IsNullOrEmpty(elementInfo.WindowTitle))
             {
-                DebugLogger.Log($"[FindTargetWindow] WindowTitle ile arama: {elementInfo.WindowTitle}");
+                DebugLogger.Log($"[FindTargetWindow] WindowTitle ile tam eşleşme aranıyor: {elementInfo.WindowTitle}");
                 var condition = new PropertyCondition(AutomationElement.NameProperty, elementInfo.WindowTitle);
-                var window = AutomationElement.RootElement.FindFirst(TreeScope.Children, condition);
+                foundWindow = AutomationElement.RootElement.FindFirst(TreeScope.Children, condition);
 
-                if (window != null)
+                if (foundWindow != null && !IsSelfProgramElement(foundWindow))
                 {
-                    // Kendi programımızı filtrele
-                    if (IsSelfProgramElement(window))
-                    {
-                        DebugLogger.Log($"[FindTargetWindow] ✗ Kendi programımız, filtrelendi!");
-                        return null;
-                    }
-
-                    DebugLogger.Log($"[FindTargetWindow] ✓ Pencere bulundu: {window.Current.Name}");
+                    DebugLogger.Log($"[FindTargetWindow] ✓ Tam eşleşme bulundu: {foundWindow.Current.Name}");
+                    return foundWindow;
                 }
-                else
-                {
-                    DebugLogger.Log($"[FindTargetWindow] ✗ Pencere bulunamadı: {elementInfo.WindowTitle}");
-                }
-
-                return window;
             }
-            else if (elementInfo.WindowProcessId.HasValue)
-            {
-                DebugLogger.Log($"[FindTargetWindow] ProcessId ile arama: {elementInfo.WindowProcessId.Value}");
 
-                // Kendi processimizi filtrele
-                if (elementInfo.WindowProcessId.Value == currentProcessId)
-                {
-                    DebugLogger.Log($"[FindTargetWindow] ✗ Kendi programımızın ProcessId'si, filtrelendi!");
-                    return null;
-                }
+            // 2. KISMI EŞLEŞME DENEMESİ (Window title'ın bir kısmı)
+            if (!string.IsNullOrEmpty(elementInfo.WindowTitle))
+            {
+                DebugLogger.Log($"[FindTargetWindow] Kısmi eşleşme aranıyor...");
+
+                // Title'dan değişken kısımları çıkar (örn: " - " sonrası)
+                var baseTitle = elementInfo.WindowTitle.Split(new[] { " - ", " – ", " — " }, StringSplitOptions.None)[0];
 
                 var windows = FindAllWithRawView(AutomationElement.RootElement, TreeScope.Children,
                     new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Window));
-                if (windows == null) return null;
 
-                foreach (AutomationElement window in windows)
+                if (windows != null)
                 {
-                    try
+                    foreach (AutomationElement window in windows)
                     {
-                        if (window.Current.ProcessId == elementInfo.WindowProcessId.Value)
+                        try
                         {
-                            DebugLogger.Log($"[FindTargetWindow] ✓ Pencere bulundu (ProcessId): {window.Current.Name}");
+                            var windowName = window.Current.Name;
+
+                            // Kendi programımızı filtrele
+                            if (IsSelfProgramElement(window))
+                                continue;
+
+                            // Kısmi eşleşme kontrolü
+                            if (!string.IsNullOrEmpty(windowName))
+                            {
+                                // Başlangıç eşleşmesi
+                                if (windowName.StartsWith(baseTitle, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    DebugLogger.Log($"[FindTargetWindow] ✓ Kısmi eşleşme bulundu (başlangıç): {windowName}");
+                                    return window;
+                                }
+
+                                // İçinde geçme kontrolü (daha az güvenilir)
+                                if (baseTitle.Length > 5 && windowName.Contains(baseTitle, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    DebugLogger.Log($"[FindTargetWindow] ✓ Kısmi eşleşme bulundu (içerik): {windowName}");
+                                    return window;
+                                }
+                            }
+                        }
+                        catch { }
+                    }
+                }
+            }
+
+            // 3. CLASSNAME İLE ARAMA (WindowClassName varsa)
+            if (!string.IsNullOrEmpty(elementInfo.WindowClassName))
+            {
+                DebugLogger.Log($"[FindTargetWindow] ClassName ile arama: {elementInfo.WindowClassName}");
+
+                var windows = FindAllWithRawView(AutomationElement.RootElement, TreeScope.Children,
+                    new PropertyCondition(AutomationElement.ClassNameProperty, elementInfo.WindowClassName));
+
+                if (windows != null && windows.Count > 0)
+                {
+                    // İlk uygun pencereyi al (kendi programımız değilse)
+                    foreach (AutomationElement window in windows)
+                    {
+                        if (!IsSelfProgramElement(window))
+                        {
+                            DebugLogger.Log($"[FindTargetWindow] ✓ ClassName ile bulundu: {window.Current.Name}");
                             return window;
                         }
                     }
-                    catch { }
                 }
-                DebugLogger.Log("[FindTargetWindow] ✗ ProcessId ile pencere bulunamadı");
             }
+
+            // 4. PROCESS NAME İLE ARAMA (WindowProcessName varsa)
+            if (!string.IsNullOrEmpty(elementInfo.WindowProcessName))
+            {
+                DebugLogger.Log($"[FindTargetWindow] ProcessName ile arama: {elementInfo.WindowProcessName}");
+
+                try
+                {
+                    var processes = Process.GetProcessesByName(elementInfo.WindowProcessName);
+                    foreach (var process in processes)
+                    {
+                        if (process.Id == currentProcessId)
+                            continue;
+
+                        var windows = FindAllWithRawView(AutomationElement.RootElement, TreeScope.Children,
+                            new PropertyCondition(AutomationElement.ProcessIdProperty, process.Id));
+
+                        if (windows != null && windows.Count > 0)
+                        {
+                            var window = windows[0];
+                            DebugLogger.Log($"[FindTargetWindow] ✓ ProcessName ile bulundu: {window.Current.Name}");
+                            return window;
+                        }
+                    }
+                }
+                catch { }
+            }
+
+            DebugLogger.Log("[FindTargetWindow] ✗ Pencere hiçbir yöntemle bulunamadı");
         }
         catch (Exception ex)
         {

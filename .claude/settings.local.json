@@ -21,7 +21,9 @@
       "Bash(python -c:*)",
       "Bash(git rm:*)",
       "Bash(git filter-branch:*)",
-      "Bash(git reset:*)"
+      "Bash(git reset:*)",
+      "Bash(git push:*)",
+      "Bash(git pull:*)"
     ],
     "deny": [],
     "ask": []

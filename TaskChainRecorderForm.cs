@@ -59,6 +59,9 @@ public partial class TaskChainRecorderForm : Form
 
         // Başlangıçta görev görüntüleyiciyi güncelle
         UpdateTaskChainViewer();
+
+        // Debug logger'ı başlat (element arama sorunlarını tespit için)
+        DebugLogger.StartNewSession();
     }
 
     /// <summary>
