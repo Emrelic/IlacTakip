@@ -100,6 +100,22 @@ public class TaskChainDatabase
     }
 
     /// <summary>
+    /// Tüm görev zincirlerini getir
+    /// </summary>
+    public List<TaskChain> GetAll()
+    {
+        return LoadAll();
+    }
+
+    /// <summary>
+    /// İsme göre görev zincirini getir (alias for Get)
+    /// </summary>
+    public TaskChain? GetByName(string name)
+    {
+        return Get(name);
+    }
+
+    /// <summary>
     /// Görev zincirini siler
     /// </summary>
     public void Delete(string name)
@@ -107,6 +123,26 @@ public class TaskChainDatabase
         var chains = LoadAll();
         chains.RemoveAll(c => c.Name == name);
         SaveAll(chains);
+    }
+
+    /// <summary>
+    /// Mevcut bir görev zincirini güncelle
+    /// </summary>
+    public void Update(TaskChain chain)
+    {
+        var chains = LoadAll();
+        var index = chains.FindIndex(c => c.Name == chain.Name);
+
+        if (index >= 0)
+        {
+            chain.LastModifiedDate = DateTime.Now;
+            chains[index] = chain;
+            SaveAll(chains);
+        }
+        else
+        {
+            throw new ArgumentException($"'{chain.Name}' adlı görev zinciri bulunamadı.");
+        }
     }
 
     /// <summary>

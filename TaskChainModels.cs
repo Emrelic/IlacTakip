@@ -298,6 +298,13 @@ public class ConditionInfo
     /// Dallanma tipi: "Boolean" (true/false) veya "SwitchCase" (çoklu dal)
     /// </summary>
     public string BranchType { get; set; } = "Boolean";
+
+    /// <summary>
+    /// Döngü sonlanma modu aktif mi?
+    /// True: Koşul true ise program sonlanır, false ise döngü devam eder (belirtilen adıma gider)
+    /// False: Normal koşullu dallanma davranışı
+    /// </summary>
+    public bool IsLoopTerminationMode { get; set; } = false;
 }
 
 /// <summary>
@@ -401,4 +408,11 @@ public class TaskChain
     public DateTime CreatedDate { get; set; }
     public DateTime? LastModifiedDate { get; set; }
     public List<TaskStep> Steps { get; set; } = new();
+
+    // Döngüsel görev özellikleri
+    public bool IsLooped { get; set; } = false;
+    public int LoopStartIndex { get; set; } = 0; // Döngünün başlayacağı adım indexi (0-based)
+    public int LoopEndIndex { get; set; } = -1; // Döngünün biteceği adım indexi (0-based)
+    public int MaxLoopCount { get; set; } = 100; // Maksimum döngü sayısı (varsayılan: 100)
+    public TaskStep? LoopConditionStep { get; set; } // Döngü sonlanma kontrolü adımı
 }

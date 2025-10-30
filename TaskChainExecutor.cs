@@ -91,8 +91,12 @@ public class TaskChainExecutor
 
         try
         {
-            // Her adımı sırayla çalıştır
-            for (int i = 0; i < chain.Steps.Count; i++)
+            int i = 0;
+            bool isLooping = false;
+            int loopCount = 0;
+
+            // Her adımı sırayla çalıştır (döngü desteği ile)
+            while (i < chain.Steps.Count)
             {
                 // Cancellation check
                 if (_cancellationTokenSource.Token.IsCancellationRequested)
@@ -132,7 +136,6 @@ public class TaskChainExecutor
                     else if (action == ErrorAction.Retry)
                     {
                         // Aynı adımı tekrar dene
-                        i--;
                         stepRecord.RetryCount++;
                         Log($"Adım {step.StepNumber} tekrar deneniyor... (Deneme: {stepRecord.RetryCount})");
                         continue;
@@ -151,6 +154,54 @@ public class TaskChainExecutor
                 {
                     await Task.Delay(GetStepDelay(), _cancellationTokenSource.Token);
                 }
+
+                // Döngüsel görev kontrolü
+                if (chain.IsLooped && i == chain.LoopEndIndex)
+                {
+                    isLooping = true;
+                    loopCount++;
+
+                    // Döngü sonlanma kontrolü
+                    if (chain.LoopConditionStep != null)
+                    {
+                        Log($"🔄 Döngü sonlanma kontrolü yapılıyor... (Döngü: {loopCount})");
+
+                        // Döngü sonlanma koşulunu kontrol et
+                        var loopCheckResult = await CheckLoopConditionAsync(chain.LoopConditionStep, _cancellationTokenSource.Token);
+
+                        if (loopCheckResult)
+                        {
+                            Log("✓ Döngü sonlanma koşulu sağlandı. Döngü tamamlanıyor...");
+                            i++; // Sonraki adıma geç (döngüden çık)
+                        }
+                        else
+                        {
+                            Log($"↩️ Döngü devam ediyor. {chain.LoopStartIndex + 1}. adıma dönülüyor...");
+                            i = chain.LoopStartIndex; // Döngü başlangıcına dön
+                            continue;
+                        }
+                    }
+                    else
+                    {
+                        // Döngü sonlanma kontrolü yoksa, döngüyü maksimum sayıda çalıştır
+                        int maxLoopCount = chain.MaxLoopCount > 0 ? chain.MaxLoopCount : 100; // Varsayılan 100
+                        if (loopCount >= maxLoopCount)
+                        {
+                            Log($"⚠️ Maksimum döngü sayısına ({maxLoopCount}) ulaşıldı. Döngü sonlandırılıyor.");
+                            i++;
+                        }
+                        else
+                        {
+                            Log($"↩️ Döngü {loopCount}. kez çalışıyor. {chain.LoopStartIndex + 1}. adıma dönülüyor... (Maks: {maxLoopCount})");
+                            i = chain.LoopStartIndex; // Döngü başlangıcına dön
+                            continue;
+                        }
+                    }
+                }
+                else
+                {
+                    i++; // Bir sonraki adıma geç
+                }
             }
 
             // Execution tamamlandı
@@ -158,6 +209,10 @@ public class TaskChainExecutor
             {
                 _currentRecord.Status = ExecutionStatus.Completed;
                 Log("Task chain başarıyla tamamlandı!");
+                if (isLooping)
+                {
+                    Log($"📊 Toplam döngü sayısı: {loopCount}");
+                }
                 ExecutionCompleted?.Invoke(this, new ExecutionEventArgs(_currentRecord));
             }
         }
@@ -670,20 +725,52 @@ public class TaskChainExecutor
             string result = _conditionEvaluator.EvaluateConditions(step.Condition);
             Log($"Koşul sonucu: {result}");
 
-            // Hangi dala gideceğini bul
-            string targetBranch = _conditionEvaluator.GetTargetBranch(step.Condition, result);
-
-            if (string.IsNullOrEmpty(targetBranch))
+            // DÖNGÜ SONLANMA MODU KONTROLÜ
+            if (step.Condition.IsLoopTerminationMode)
             {
-                Log($"⚠ Uyarı: Koşul sonucu '{result}' için hedef dal bulunamadı. Varsayılan akış devam ediyor.");
-                return;
+                Log("🔄 Döngü Sonlanma Modu aktif");
+
+                if (result.ToLower() == "true")
+                {
+                    // Koşul TRUE → Programı sonlandır
+                    Log("✅ Döngü sonlanma koşulu sağlandı → Program sonlandırılıyor");
+                    _cancellationTokenSource?.Cancel();
+                    return;
+                }
+                else
+                {
+                    // Koşul FALSE → Döngü devam eder, belirtilen adıma git
+                    Log("➰ Döngü sonlanma koşulu sağlanmadı → Döngü devam ediyor");
+
+                    // FALSE durumu için hedef dalı bul
+                    string targetBranch = _conditionEvaluator.GetTargetBranch(step.Condition, result);
+
+                    if (!string.IsNullOrEmpty(targetBranch))
+                    {
+                        Log($"↩ Geri dönüş hedefi: Adım {targetBranch}");
+                        step.NextStepId = targetBranch;
+                    }
+                    else
+                    {
+                        Log($"⚠ Uyarı: FALSE durumu için hedef dal bulunamadı.");
+                    }
+                }
             }
+            else
+            {
+                // NORMAL KOŞULLU DALLANMA MODU
+                // Hangi dala gideceğini bul
+                string targetBranch = _conditionEvaluator.GetTargetBranch(step.Condition, result);
 
-            Log($"✓ Dallanma hedefi: Adım {targetBranch}");
+                if (string.IsNullOrEmpty(targetBranch))
+                {
+                    Log($"⚠ Uyarı: Koşul sonucu '{result}' için hedef dal bulunamadı. Varsayılan akış devam ediyor.");
+                    return;
+                }
 
-            // Hedef dalı bir sonraki adım olarak işaretle (bu bilgi ExecuteAsync'te kullanılabilir)
-            // Şu anki basit implementasyon için, sadece log'la
-            // Gerçek implementasyonda, ExecuteAsync'in StepId bazlı navigation yapması gerekiyor
+                Log($"✓ Dallanma hedefi: Adım {targetBranch}");
+                step.NextStepId = targetBranch;
+            }
 
             await Task.Delay(500, cancellationToken);
         }
@@ -696,6 +783,49 @@ public class TaskChainExecutor
     /// <summary>
     /// Log mesajı
     /// </summary>
+    /// <summary>
+    /// Döngü sonlanma koşulunu kontrol et
+    /// </summary>
+    private async Task<bool> CheckLoopConditionAsync(TaskStep loopConditionStep, CancellationToken cancellationToken)
+    {
+        try
+        {
+            Log("Döngü sonlanma koşulu kontrol ediliyor...");
+
+            // Gelişmiş kontrol: Koşul değerlendirici kullan
+            if (loopConditionStep.Condition != null && _conditionEvaluator != null)
+            {
+                // Koşul değerlendirici ile kontrol et
+                var conditionResult = _conditionEvaluator.EvaluateConditions(loopConditionStep.Condition);
+                Log($"Koşul değerlendirme sonucu: {conditionResult}");
+
+                // "true" döndürüldüyse döngü sonlanır
+                return conditionResult.ToLower() == "true";
+            }
+
+            // Basit bir örnek: Kullanıcıya sor
+            var result = await Task.Run(() =>
+            {
+                var dialogResult = MessageBox.Show(
+                    "Döngü sonlandırılsın mı?\n\n" +
+                    "Evet: Döngü sonlanır ve görev tamamlanır\n" +
+                    "Hayır: Döngü devam eder",
+                    "Döngü Sonlanma Kontrolü",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Question);
+
+                return dialogResult == DialogResult.Yes;
+            }, cancellationToken);
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            Log($"Döngü koşulu kontrolünde hata: {ex.Message}");
+            return true; // Hata durumunda döngüyü sonlandır
+        }
+    }
+
     private void Log(string message)
     {
         LogMessage?.Invoke(this, message);
