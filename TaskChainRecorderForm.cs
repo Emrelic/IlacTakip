@@ -935,16 +935,69 @@ public partial class TaskChainRecorderForm : Form
 
         try
         {
+            string originalName = _currentChain.Name;
             _currentChain.Name = txtChainName.Text;
             _currentChain.Description = $"{_currentChain.Steps.Count} adımlı görev zinciri";
-            _database.Add(_currentChain);
 
-            LogMessage($"✓✓✓ Görev zinciri kaydedildi: {_currentChain.Name}");
+            // Döngüsel görev ayarlarını kaydet
+            if (chkIsLooped != null && chkIsLooped.Checked)
+            {
+                _currentChain.IsLooped = true;
+                _currentChain.LoopStartIndex = (int)numLoopStartIndex.Value - 1; // 0-based index
+                _currentChain.LoopEndIndex = (int)numLoopEndIndex.Value - 1; // 0-based index
+                _currentChain.MaxLoopCount = (int)numMaxLoopCount.Value;
+            }
+            else
+            {
+                _currentChain.IsLooped = false;
+                _currentChain.LoopStartIndex = 0;
+                _currentChain.LoopEndIndex = -1;
+                _currentChain.MaxLoopCount = 100;
+            }
+
+            // Var olan zincir mi yoksa yeni mi kontrol et
+            var existingChain = _database.GetByName(originalName);
+            if (existingChain != null && originalName == txtChainName.Text)
+            {
+                // Güncelleme işlemi
+                _database.Update(_currentChain);
+                LogMessage($"✓✓✓ Görev zinciri güncellendi: {_currentChain.Name}");
+                ShowMessage($"Görev zinciri '{_currentChain.Name}' başarıyla güncellendi!\n\n" +
+                              $"Toplam {_currentChain.Steps.Count} adım.",
+                    "Güncelleme Başarılı", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            else
+            {
+                // Yeni zincir veya isim değişikliği
+                if (_database.GetByName(_currentChain.Name) != null)
+                {
+                    // Aynı isimde başka bir zincir var
+                    var result = ShowMessage($"'{_currentChain.Name}' adlı bir görev zinciri zaten var.\n\n" +
+                                            "Üzerine yazmak istiyor musunuz?",
+                                            "Onay", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+
+                    if (result == DialogResult.Yes)
+                    {
+                        _database.Delete(_currentChain.Name);
+                        _database.Add(_currentChain);
+                    }
+                    else
+                    {
+                        return; // İşlemi iptal et
+                    }
+                }
+                else
+                {
+                    _database.Add(_currentChain);
+                }
+
+                LogMessage($"✓✓✓ Görev zinciri kaydedildi: {_currentChain.Name}");
+                ShowMessage($"Görev zinciri '{_currentChain.Name}' başarıyla kaydedildi!\n\n" +
+                              $"Toplam {_currentChain.Steps.Count} adım kaydedildi.",
+                    "Başarılı", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+
             LogMessage($"Database yolu: {_database.GetDatabasePath()}");
-
-            ShowMessage($"Görev zinciri '{_currentChain.Name}' başarıyla kaydedildi!\n\n" +
-                          $"Toplam {_currentChain.Steps.Count} adım kaydedildi.",
-                "Başarılı", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         catch (Exception ex)
         {
@@ -1597,6 +1650,134 @@ public partial class TaskChainRecorderForm : Form
     private void btnClose_Click(object? sender, EventArgs e)
     {
         Close();
+    }
+
+    private void btnLoadChain_Click(object? sender, EventArgs e)
+    {
+        // Görev seçim dialogunu göster
+        using (var dialog = new TaskChainSelectorDialog(_database))
+        {
+            if (dialog.ShowDialog() == DialogResult.OK && dialog.SelectedChain != null)
+            {
+                // Seçilen görevi yükle
+                LoadChainToForm(dialog.SelectedChain);
+            }
+        }
+    }
+
+    private void LoadChainToForm(TaskChain chain)
+    {
+        try
+        {
+            // Mevcut zinciri güncelle
+            _currentChain = chain;
+
+            // Form kontrollerini güncelle
+            txtChainName.Text = chain.Name;
+
+            // Döngü ayarlarını yükle
+            if (chain.IsLooped && chkIsLooped != null)
+            {
+                chkIsLooped.Checked = true;
+                numLoopStartIndex.Value = chain.LoopStartIndex + 1; // 1-based gösterim
+                numLoopEndIndex.Value = chain.LoopEndIndex + 1; // 1-based gösterim
+                numMaxLoopCount.Value = chain.MaxLoopCount;
+
+                // Döngü panelini göster
+                if (pnlLoopSettings != null)
+                {
+                    pnlLoopSettings.Visible = true;
+                }
+            }
+
+            // Adımları göster
+            UpdateTaskChainViewer();
+
+            // Güncel adım numarasını ayarla
+            if (_currentChain.Steps.Count > 0)
+            {
+                _currentStepNumber = _currentChain.Steps.Count + 1;
+                lblCurrentStep.Text = $"Adım: {_currentStepNumber}";
+            }
+
+            LogMessage("✓ Görev zinciri yüklendi: " + chain.Name);
+            LogMessage($"Toplam {chain.Steps.Count} adım yüklendi.");
+
+            // Kullanıcıyı bilgilendir
+            ShowMessage($"'{chain.Name}' görev zinciri başarıyla yüklendi.\n\n" +
+                       $"Artık bu görevi düzenleyebilir veya yeni adımlar ekleyebilirsiniz.",
+                       "Görev Yüklendi", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+        catch (Exception ex)
+        {
+            LogMessage($"HATA: Görev yüklenirken hata: {ex.Message}");
+            ShowMessage($"Görev yüklenirken hata oluştu:\n{ex.Message}",
+                       "Hata", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    // Döngüsel görev olay işleyicileri
+    private void btnMakeLooped_Click(object? sender, EventArgs e)
+    {
+        if (_currentChain.Steps.Count < 2)
+        {
+            ShowMessage("Döngüsel görev oluşturmak için en az 2 adım gereklidir!",
+                "Uyarı", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        // Panel görünürlüğünü değiştir
+        if (pnlLoopSettings != null)
+        {
+            pnlLoopSettings.Visible = !pnlLoopSettings.Visible;
+
+            if (pnlLoopSettings.Visible)
+            {
+                // Maksimum değerleri güncelle
+                numLoopStartIndex.Maximum = _currentChain.Steps.Count;
+                numLoopEndIndex.Maximum = _currentChain.Steps.Count;
+                numLoopEndIndex.Value = _currentChain.Steps.Count;
+
+                // Döngü sonlanma kontrolü adımı ekle
+                AddLoopConditionStep();
+            }
+        }
+    }
+
+    private void chkIsLooped_CheckedChanged(object? sender, EventArgs e)
+    {
+        if (chkIsLooped != null)
+        {
+            _currentChain.IsLooped = chkIsLooped.Checked;
+            numLoopStartIndex.Enabled = chkIsLooped.Checked;
+            numLoopEndIndex.Enabled = chkIsLooped.Checked;
+            numMaxLoopCount.Enabled = chkIsLooped.Checked;
+
+            if (chkIsLooped.Checked)
+            {
+                LogMessage("🔄 Döngüsel görev aktif edildi.");
+                LogMessage($"📊 Maksimum döngü sayısı: {numMaxLoopCount.Value}");
+            }
+            else
+            {
+                LogMessage("⏹️ Döngüsel görev devre dışı bırakıldı.");
+            }
+        }
+    }
+
+    private void AddLoopConditionStep()
+    {
+        // Döngü sonlanma kontrolü adımı oluştur
+        var loopConditionStep = new TaskStep
+        {
+            StepNumber = _currentChain.Steps.Count + 1,
+            StepType = StepType.LoopOrEnd,
+            Description = "Döngü Sonlanma Kontrolü",
+            Action = ActionType.None
+        };
+
+        _currentChain.LoopConditionStep = loopConditionStep;
+        LogMessage($"➕ Döngü sonlanma kontrolü adımı eklendi (Adım {loopConditionStep.StepNumber})");
     }
 
     // btnTopmost kaldırıldı - form her zaman topmost
@@ -2780,6 +2961,175 @@ public partial class TaskChainRecorderForm : Form
 
             // Düzenleme moduna geç
             LoadStepForEditing(stepToEdit);
+        }
+        else
+        {
+            ShowMessage("Geçersiz adım numarası!", "Hata", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    /// <summary>
+    /// Araya adım ekle veya sona ekle
+    /// </summary>
+    private void btnInsertStep_Click(object? sender, EventArgs e)
+    {
+        // Düzenleme modundayken tekrar işlem yapmayı engelle
+        if (_isEditingMode)
+        {
+            ShowMessage("Zaten bir adımı düzenliyorsunuz. Lütfen önce 'Adımı Kaydet' butonuna basın veya düzenlemeyi iptal edin.",
+                "Uyarı", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        // Mevcut son adım numarasını bul
+        int maxStepNumber = _currentChain.Steps.Count > 0
+            ? _currentChain.Steps.Max(s => s.StepNumber)
+            : 0;
+
+        // Adım listesini göster
+        string stepList = "";
+        if (_currentChain.Steps.Count > 0)
+        {
+            stepList = string.Join("\n", _currentChain.Steps
+                .OrderBy(s => s.StepNumber)
+                .Select(s => $"Adım {s.StepNumber}: {s.Description}"));
+            stepList = $"\n\nMevcut adımlar:\n{stepList}";
+        }
+
+        // Input dialog mesajını hazırla
+        string dialogMessage;
+        if (_currentChain.Steps.Count == 0)
+        {
+            dialogMessage = "İlk adımı eklemek için 1 yazın.";
+        }
+        else
+        {
+            dialogMessage = $"Hangi adımdan SONRA yeni adım eklemek istiyorsunuz?{stepList}\n\n";
+            if (maxStepNumber > 1)
+            {
+                dialogMessage += $"• Araya eklemek için: 1-{maxStepNumber - 1} arası bir sayı girin\n";
+            }
+            dialogMessage += $"• Sona eklemek için: {maxStepNumber} veya daha büyük bir sayı girin\n";
+            dialogMessage += $"• En başa eklemek için: 0 yazın\n\n";
+            dialogMessage += "Örnek: 5 yazarsanız, yeni adım 6 olur ve eski 6 -> 7, 7 -> 8 olur.";
+        }
+
+        // Input dialog göster
+        string input = Microsoft.VisualBasic.Interaction.InputBox(
+            dialogMessage,
+            "Araya/Sona Adım Ekle",
+            "");
+
+        if (string.IsNullOrWhiteSpace(input))
+            return;
+
+        if (int.TryParse(input.Trim(), out int afterStepNumber))
+        {
+            // İlk adım ekleme kontrolü
+            if (_currentChain.Steps.Count == 0 || afterStepNumber <= 0)
+            {
+                // İlk adımı ekle
+                _currentStep = new TaskStep
+                {
+                    StepNumber = 1,
+                    Description = "Adım 1: Yeni Adım",
+                    StepType = StepType.UIElementAction
+                };
+
+                LogMessage("📝 İlk adım oluşturuldu");
+            }
+            // Sona ekleme kontrolü
+            else if (afterStepNumber >= maxStepNumber)
+            {
+                // Sona ekle
+                _currentStep = new TaskStep
+                {
+                    StepNumber = maxStepNumber + 1,
+                    Description = $"Adım {maxStepNumber + 1}: Yeni Adım",
+                    StepType = StepType.UIElementAction
+                };
+
+                LogMessage($"📝 Zincirin sonuna adım {_currentStep.StepNumber} ekleniyor...");
+
+                // Önceki son adımın NextStepNumber'ını güncelle
+                var lastStep = _currentChain.Steps.FirstOrDefault(s => s.StepNumber == maxStepNumber);
+                if (lastStep != null && !lastStep.IsChainEnd)
+                {
+                    lastStep.NextStepNumber = _currentStep.StepNumber;
+                }
+            }
+            // Araya ekleme
+            else
+            {
+                // Belirtilen adımın var olduğunu kontrol et
+                var existingStep = _currentChain.Steps.FirstOrDefault(s => s.StepNumber == afterStepNumber);
+
+                if (existingStep == null)
+                {
+                    ShowMessage($"Adım {afterStepNumber} bulunamadı!", "Hata", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                // Adım numaralarını yeniden düzenle - belirtilen adımdan sonraki tüm adımların numaralarını 1 artır
+                var stepsToUpdate = _currentChain.Steps
+                    .Where(s => s.StepNumber > afterStepNumber)
+                    .OrderByDescending(s => s.StepNumber)
+                    .ToList();
+
+                LogMessage($"📝 Adım {afterStepNumber} sonrasına yeni adım ekleniyor...");
+
+                foreach (var step in stepsToUpdate)
+                {
+                    var oldNumber = step.StepNumber;
+                    step.StepNumber = oldNumber + 1;
+
+                    // NextStepNumber'ları da güncelle
+                    if (step.NextStepNumber.HasValue && step.NextStepNumber > afterStepNumber)
+                    {
+                        step.NextStepNumber = step.NextStepNumber + 1;
+                    }
+
+                    // LoopBackToStep'leri de güncelle
+                    if (step.LoopBackToStep.HasValue && step.LoopBackToStep > afterStepNumber)
+                    {
+                        step.LoopBackToStep = step.LoopBackToStep + 1;
+                    }
+
+                    LogMessage($"  Adım {oldNumber} -> Adım {step.StepNumber}");
+                }
+
+                // Önceki adımın NextStepNumber'ını güncelle (eğer varsa)
+                var prevSteps = _currentChain.Steps.Where(s => s.NextStepNumber == afterStepNumber + 1);
+                foreach (var prevStep in prevSteps)
+                {
+                    if (prevStep.StepNumber == afterStepNumber)
+                    {
+                        prevStep.NextStepNumber = afterStepNumber + 1;
+                    }
+                }
+
+                // Yeni adım için currentStep'i ayarla
+                _currentStep = new TaskStep
+                {
+                    StepNumber = afterStepNumber + 1,
+                    Description = $"Adım {afterStepNumber + 1}: Yeni Adım",
+                    StepType = StepType.UIElementAction
+                };
+            }
+
+            // Form durumunu güncelle
+            _currentStepNumber = _currentStep.StepNumber;
+            lblCurrentStep.Text = $"Adım: {_currentStep.StepNumber}";
+            lblCurrentStep.ForeColor = Color.FromArgb(100, 200, 255);
+            cmbStepType.SelectedIndex = 1; // Varsayılan olarak UI element seçimi
+
+            // Zincir görünümünü güncelle
+            UpdateTaskChainViewer();
+
+            ShowMessage($"Adım {_currentStep.StepNumber} eklemeye hazır. Lütfen adım detaylarını doldurun ve 'Adımı Kaydet' butonuna basın.",
+                "Bilgi", MessageBoxButtons.OK, MessageBoxIcon.Information);
+
+            LogMessage($"✅ Yeni adım {_currentStep.StepNumber} oluşturuldu ve eklemeye hazır");
         }
         else
         {

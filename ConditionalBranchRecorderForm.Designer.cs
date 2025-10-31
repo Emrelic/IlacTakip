@@ -20,12 +20,14 @@ partial class ConditionalBranchRecorderForm
         // Labels
         lblTitle = new Label();
         lblPageInfo = new Label();
+        lblDetectWarning = new Label();
         lblBranchType = new Label();
         lblConditions = new Label();
         lblBranches = new Label();
 
         // Buttons
         btnTopmost = new Button();
+        btnDetectTargetPage = new Button();
         btnRefreshElements = new Button();
         btnAddCondition = new Button();
         btnRemoveCondition = new Button();
@@ -36,6 +38,9 @@ partial class ConditionalBranchRecorderForm
 
         // ComboBox
         cmbBranchType = new ComboBox();
+
+        // CheckBoxes
+        chkLoopTerminationMode = new CheckBox();
 
         // TextBoxes
         txtPageIdentifier = new TextBox();
@@ -78,11 +83,11 @@ partial class ConditionalBranchRecorderForm
         //
         // Form
         //
-        this.ClientSize = new Size(1200, 800);
+        this.ClientSize = new Size(1200, 820);
         this.Text = "Koşullu Dallanma Kaydedici (Tip 3)";
         this.StartPosition = FormStartPosition.CenterScreen;
         this.FormBorderStyle = FormBorderStyle.Sizable;
-        this.MinimumSize = new Size(1000, 700);
+        this.MinimumSize = new Size(1000, 720);
 
         //
         // lblTitle
@@ -118,8 +123,30 @@ partial class ConditionalBranchRecorderForm
         //
         txtPageIdentifier.Location = new Point(15, 75);
         txtPageIdentifier.Name = "txtPageIdentifier";
-        txtPageIdentifier.Size = new Size(400, 23);
+        txtPageIdentifier.Size = new Size(300, 23);
         txtPageIdentifier.PlaceholderText = "Örn: Hasta Kayıt Sayfası, URL, vb.";
+        txtPageIdentifier.ReadOnly = true;
+        txtPageIdentifier.BackColor = System.Drawing.SystemColors.Window;
+
+        //
+        // btnDetectTargetPage
+        //
+        btnDetectTargetPage.Location = new Point(320, 73);
+        btnDetectTargetPage.Name = "btnDetectTargetPage";
+        btnDetectTargetPage.Size = new Size(150, 27);
+        btnDetectTargetPage.Text = "🎯 Hedef Sayfayı Belirle";
+        btnDetectTargetPage.UseVisualStyleBackColor = true;
+        btnDetectTargetPage.Click += BtnDetectTargetPage_Click;
+
+        //
+        // lblDetectWarning
+        //
+        lblDetectWarning.AutoSize = true;
+        lblDetectWarning.Location = new Point(15, 103);
+        lblDetectWarning.Name = "lblDetectWarning";
+        lblDetectWarning.Size = new Size(0, 15);
+        lblDetectWarning.ForeColor = System.Drawing.Color.Red;
+        lblDetectWarning.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
 
         //
         // lblBranchType
@@ -142,6 +169,17 @@ partial class ConditionalBranchRecorderForm
         cmbBranchType.SelectedIndexChanged += CmbBranchType_SelectedIndexChanged;
 
         //
+        // chkLoopTerminationMode
+        //
+        chkLoopTerminationMode.AutoSize = true;
+        chkLoopTerminationMode.Location = new Point(820, 77);
+        chkLoopTerminationMode.Name = "chkLoopTerminationMode";
+        chkLoopTerminationMode.Size = new Size(200, 19);
+        chkLoopTerminationMode.Text = "🔄 Döngü Sonlanma Modu";
+        chkLoopTerminationMode.UseVisualStyleBackColor = true;
+        chkLoopTerminationMode.CheckedChanged += ChkLoopTerminationMode_CheckedChanged;
+
+        //
         // btnRefreshElements
         //
         btnRefreshElements.Location = new Point(660, 70);
@@ -154,7 +192,7 @@ partial class ConditionalBranchRecorderForm
         //
         // grpConditions
         //
-        grpConditions.Location = new Point(15, 120);
+        grpConditions.Location = new Point(15, 130);
         grpConditions.Name = "grpConditions";
         grpConditions.Size = new Size(1165, 300);
         grpConditions.TabStop = false;
@@ -320,7 +358,7 @@ partial class ConditionalBranchRecorderForm
         //
         // grpBranches
         //
-        grpBranches.Location = new Point(15, 440);
+        grpBranches.Location = new Point(15, 450);
         grpBranches.Name = "grpBranches";
         grpBranches.Size = new Size(1165, 260);
         grpBranches.TabStop = false;
@@ -457,7 +495,7 @@ partial class ConditionalBranchRecorderForm
         // lblDefaultBranch
         //
         lblDefaultBranch.AutoSize = true;
-        lblDefaultBranch.Location = new Point(15, 715);
+        lblDefaultBranch.Location = new Point(15, 725);
         lblDefaultBranch.Name = "lblDefaultBranch";
         lblDefaultBranch.Size = new Size(250, 15);
         lblDefaultBranch.Text = "Varsayılan Dal (koşul sağlanmazsa):";
@@ -465,7 +503,7 @@ partial class ConditionalBranchRecorderForm
         //
         // txtDefaultBranch
         //
-        txtDefaultBranch.Location = new Point(270, 712);
+        txtDefaultBranch.Location = new Point(270, 722);
         txtDefaultBranch.Name = "txtDefaultBranch";
         txtDefaultBranch.Size = new Size(150, 23);
         txtDefaultBranch.PlaceholderText = "Adım ID";
@@ -473,7 +511,7 @@ partial class ConditionalBranchRecorderForm
         //
         // btnSave
         //
-        btnSave.Location = new Point(900, 710);
+        btnSave.Location = new Point(900, 720);
         btnSave.Name = "btnSave";
         btnSave.Size = new Size(130, 35);
         btnSave.Text = "💾 Kaydet";
@@ -484,7 +522,7 @@ partial class ConditionalBranchRecorderForm
         //
         // btnCancel
         //
-        btnCancel.Location = new Point(1050, 710);
+        btnCancel.Location = new Point(1050, 720);
         btnCancel.Name = "btnCancel";
         btnCancel.Size = new Size(130, 35);
         btnCancel.Text = "❌ İptal";
@@ -496,8 +534,11 @@ partial class ConditionalBranchRecorderForm
         this.Controls.Add(btnTopmost);
         this.Controls.Add(lblPageInfo);
         this.Controls.Add(txtPageIdentifier);
+        this.Controls.Add(btnDetectTargetPage);
+        this.Controls.Add(lblDetectWarning);
         this.Controls.Add(lblBranchType);
         this.Controls.Add(cmbBranchType);
+        this.Controls.Add(chkLoopTerminationMode);
         this.Controls.Add(btnRefreshElements);
         this.Controls.Add(grpConditions);
         this.Controls.Add(grpBranches);
@@ -514,10 +555,12 @@ partial class ConditionalBranchRecorderForm
 
     private Label lblTitle;
     private Label lblPageInfo;
+    private Label lblDetectWarning;
     private Label lblBranchType;
     private Label lblConditions;
     private Label lblBranches;
     private Button btnTopmost;
+    private Button btnDetectTargetPage;
     private Button btnRefreshElements;
     private Button btnAddCondition;
     private Button btnRemoveCondition;
@@ -526,6 +569,7 @@ partial class ConditionalBranchRecorderForm
     private Button btnSave;
     private Button btnCancel;
     private ComboBox cmbBranchType;
+    private CheckBox chkLoopTerminationMode;
     private TextBox txtPageIdentifier;
     private GroupBox grpConditions;
     private ListBox lstConditions;

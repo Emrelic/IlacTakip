@@ -92,6 +92,104 @@ public partial class ConditionalBranchRecorderForm : Form
     }
 
     /// <summary>
+    /// Hedef sayfayı tespit et
+    /// </summary>
+    private async void BtnDetectTargetPage_Click(object? sender, EventArgs e)
+    {
+        try
+        {
+            btnDetectTargetPage.Enabled = false;
+            lblDetectWarning.Text = "⏳ 3 saniye içinde hedef sayfaya tıklayın...";
+            lblDetectWarning.ForeColor = System.Drawing.Color.Blue;
+            this.TopMost = true;
+
+            // 3 saniye bekle
+            await Task.Delay(3000);
+
+            // Form disposed oldu mu kontrol et
+            if (IsDisposed || !IsHandleCreated)
+                return;
+
+            lblDetectWarning.Text = "🎯 Şimdi hedef sayfaya tıklayın!";
+            lblDetectWarning.ForeColor = System.Drawing.Color.Red;
+
+            // Formu gizle
+            this.Hide();
+            await Task.Delay(500);
+
+            // Foreground window'u al
+            var targetWindow = GetForegroundWindow();
+
+            if (targetWindow == IntPtr.Zero)
+            {
+                if (!IsDisposed && IsHandleCreated)
+                {
+                    lblDetectWarning.Text = "❌ Hedef sayfa tespit edilemedi!";
+                    lblDetectWarning.ForeColor = System.Drawing.Color.Red;
+                }
+                return;
+            }
+
+            // Window bilgisini al
+            try
+            {
+                var rootElement = AutomationElement.FromHandle(targetWindow);
+                var windowTitle = rootElement.Current.Name;
+                var windowClassName = rootElement.Current.ClassName;
+                var processId = rootElement.Current.ProcessId;
+
+                // Process adını al
+                string processName = "";
+                try
+                {
+                    var process = System.Diagnostics.Process.GetProcessById(processId);
+                    processName = process.ProcessName;
+                }
+                catch { }
+
+                // Sayfa bilgisini textbox'a yaz (form disposed değilse)
+                if (!IsDisposed && IsHandleCreated)
+                {
+                    var pageInfo = $"{windowTitle} ({processName} - {windowClassName})";
+                    txtPageIdentifier.Text = pageInfo;
+
+                    lblDetectWarning.Text = $"✅ Hedef sayfa tespit edildi: {windowTitle}";
+                    lblDetectWarning.ForeColor = System.Drawing.Color.Green;
+                }
+            }
+            catch (Exception ex)
+            {
+                if (!IsDisposed && IsHandleCreated)
+                {
+                    lblDetectWarning.Text = $"❌ Hata: {ex.Message}";
+                    lblDetectWarning.ForeColor = System.Drawing.Color.Red;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Hedef sayfa tespit hatası: {ex.Message}", "Hata",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+
+            if (!IsDisposed && IsHandleCreated)
+            {
+                lblDetectWarning.Text = "❌ Bir hata oluştu!";
+                lblDetectWarning.ForeColor = System.Drawing.Color.Red;
+            }
+        }
+        finally
+        {
+            // Form disposed olmadıysa göster
+            if (!IsDisposed && IsHandleCreated)
+            {
+                this.Show();
+                this.BringToFront();
+                btnDetectTargetPage.Enabled = true;
+            }
+        }
+    }
+
+    /// <summary>
     /// Sayfadaki UI elementlerini listele
     /// </summary>
     private async void BtnRefreshElements_Click(object? sender, EventArgs e)
@@ -441,6 +539,25 @@ public partial class ConditionalBranchRecorderForm : Form
     }
 
     /// <summary>
+    /// Döngü sonlanma modu değiştiğinde
+    /// </summary>
+    private void ChkLoopTerminationMode_CheckedChanged(object? sender, EventArgs e)
+    {
+        if (chkLoopTerminationMode.Checked)
+        {
+            // Döngü sonlanma modu aktif - kullanıcıyı bilgilendir
+            MessageBox.Show(
+                "Döngü Sonlanma Modu Aktif:\n\n" +
+                "• Koşul TRUE ise: Program sonlanır\n" +
+                "• Koşul FALSE ise: Belirtilen adıma döner (döngü devam eder)\n\n" +
+                "Dallanma bölümünde FALSE durumu için döngü başlangıç adımını belirtin.",
+                "Bilgi",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+        }
+    }
+
+    /// <summary>
     /// Kaydet ve kapat
     /// </summary>
     private void BtnSave_Click(object? sender, EventArgs e)
@@ -464,6 +581,7 @@ public partial class ConditionalBranchRecorderForm : Form
 
             _conditionInfo.PageIdentifier = txtPageIdentifier.Text.Trim();
             _conditionInfo.DefaultBranchStepId = txtDefaultBranch.Text.Trim();
+            _conditionInfo.IsLoopTerminationMode = chkLoopTerminationMode.Checked;
 
             Result = _conditionInfo;
             DialogResult = DialogResult.OK;
