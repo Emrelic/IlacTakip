@@ -831,24 +831,42 @@ namespace MedulaOtomasyon
         /// </summary>
         private AutomationElement? FindWebBrowserControl(AutomationElement element)
         {
+            LogInfo("🔍 [FindWebBrowserControl] === BROWSER DETECTION BAŞLIYOR ===");
+
             var current = element;
             int depth = 0;
 
+            // Önce parent tree'yi tara
             while (current != null && depth < 20)
             {
                 try
                 {
-                    var className = current.Current.ClassName?.ToLower() ?? "";
-                    if (className.Contains("internet explorer") ||
-                        className.Contains("internetexplorer") ||
-                        className.Contains("webview") ||
-                        className.Contains("browser") ||
+                    var className = current.Current.ClassName ?? "";
+                    var controlType = current.Current.ControlType.ProgrammaticName;
+                    var name = current.Current.Name ?? "";
+
+                    LogInfo($"[FindWebBrowserControl] Depth {depth}: ClassName='{className}', ControlType={controlType}, Name='{name}'");
+
+                    // Internet Explorer_Server class'ı = kesin browser control!
+                    if (className == "Internet Explorer_Server")
+                    {
+                        LogInfo($"[FindWebBrowserControl] ✅ Internet Explorer_Server found at depth {depth}!");
+                        return current;
+                    }
+
+                    if (className.ToLower().Contains("internet explorer") ||
+                        className.ToLower().Contains("internetexplorer") ||
+                        className.ToLower().Contains("webview") ||
+                        className.ToLower().Contains("browser") ||
                         current.Current.ControlType == ControlType.Document ||
                         current.Current.ControlType == ControlType.Pane)
                     {
+                        LogInfo($"[FindWebBrowserControl] ✓ Potential browser control found at depth {depth}");
+
                         // Document kontrolü mü kontrol et
                         if (current.Current.ControlType == ControlType.Document)
                         {
+                            LogInfo($"[FindWebBrowserControl] ✅ Document control found: {className}");
                             return current;
                         }
                     }
@@ -856,10 +874,112 @@ namespace MedulaOtomasyon
                     current = TreeWalker.RawViewWalker.GetParent(current);
                     depth++;
                 }
+                catch (Exception ex)
+                {
+                    LogWarning($"[FindWebBrowserControl] Error at depth {depth}: {ex.Message}");
+                    break;
+                }
+            }
+
+            // Parent tree'de bulamadık - tüm window'u tara
+            LogInfo("[FindWebBrowserControl] Parent tree search failed, scanning entire window...");
+
+            try
+            {
+                // Root window'u bul
+                var rootElement = GetRootWindow(element);
+                if (rootElement != null)
+                {
+                    LogInfo($"[FindWebBrowserControl] Root window: {rootElement.Current.Name}, Class: {rootElement.Current.ClassName}");
+
+                    // Tüm descendants'ları tara
+                    var browserControl = ScanForBrowserControl(rootElement, 0, 10);
+                    if (browserControl != null)
+                    {
+                        return browserControl;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogError($"[FindWebBrowserControl] Window scan failed: {ex.Message}");
+            }
+
+            LogWarning("[FindWebBrowserControl] ❌ Browser control NOT FOUND");
+            return null;
+        }
+
+        private AutomationElement? GetRootWindow(AutomationElement element)
+        {
+            var current = element;
+            AutomationElement? lastWindow = null;
+
+            while (current != null)
+            {
+                try
+                {
+                    if (current.Current.ControlType == ControlType.Window)
+                    {
+                        lastWindow = current;
+                    }
+                    current = TreeWalker.RawViewWalker.GetParent(current);
+                }
                 catch
                 {
                     break;
                 }
+            }
+
+            return lastWindow;
+        }
+
+        private AutomationElement? ScanForBrowserControl(AutomationElement parent, int currentDepth, int maxDepth)
+        {
+            if (currentDepth > maxDepth) return null;
+
+            try
+            {
+                var children = parent.FindAll(TreeScope.Children, Condition.TrueCondition);
+
+                foreach (AutomationElement child in children)
+                {
+                    try
+                    {
+                        var className = child.Current.ClassName ?? "";
+                        var controlType = child.Current.ControlType.ProgrammaticName;
+                        var automationId = child.Current.AutomationId ?? "";
+
+                        // Detaylı log
+                        if (currentDepth <= 3) // İlk 3 seviyeyi logla
+                        {
+                            string indent = new string(' ', currentDepth * 2);
+                            LogInfo($"[ScanForBrowserControl] {indent}→ Class: '{className}', Type: {controlType}, ID: '{automationId}'");
+                        }
+
+                        // Browser kontrollerini ara
+                        if (className.ToLower().Contains("webbrowser") ||
+                            className.ToLower().Contains("webview") ||
+                            className == "Internet Explorer_Server" ||
+                            className.Contains("Chrome_") ||
+                            controlType == "ControlType.Document")
+                        {
+                            LogInfo($"[ScanForBrowserControl] ✅ FOUND! Class: '{className}', Type: {controlType}");
+                            return child;
+                        }
+
+                        // Recursively search children
+                        var found = ScanForBrowserControl(child, currentDepth + 1, maxDepth);
+                        if (found != null) return found;
+                    }
+                    catch
+                    {
+                        continue;
+                    }
+                }
+            }
+            catch
+            {
+                // Ignore
             }
 
             return null;
@@ -872,25 +992,61 @@ namespace MedulaOtomasyon
         {
             try
             {
-                // ValuePattern ile document interface'ini al
-                if (element.TryGetCurrentPattern(ValuePattern.Pattern, out object? pattern))
-                {
-                    // Bazen ValuePattern içinde document olabiliyor
-                }
+                LogInfo("[GetHtmlDocument] === BAŞLAMA ===");
+                LogInfo($"[GetHtmlDocument] Element ClassName: {element.Current.ClassName}");
+                LogInfo($"[GetHtmlDocument] Element ControlType: {element.Current.ControlType.ProgrammaticName}");
 
                 // Native interface üzerinden document'e ulaş
                 var nativeElement = element.GetCurrentPropertyValue(AutomationElement.NativeWindowHandleProperty);
                 if (nativeElement != null && nativeElement is int hwnd && hwnd != 0)
                 {
-                    return GetHtmlDocumentFromHwnd(hwnd);
+                    LogInfo($"[GetHtmlDocument] ✅ Element HWND bulundu: {hwnd}");
+                    LogInfo($"[GetHtmlDocument] → GetHtmlDocumentFromHwnd çağrılıyor...");
+
+                    var doc = GetHtmlDocumentFromHwnd(hwnd);
+                    if (doc != null)
+                    {
+                        LogInfo("[GetHtmlDocument] ✅ Document alındı, interface test ediliyor...");
+
+                        // Test the interface to make sure it's full IHTMLDocument2
+                        try
+                        {
+                            var testBody = doc.body;
+                            LogInfo("[GetHtmlDocument] ✅✅✅ FULL INTERFACE CONFIRMED! doc.body çalışıyor!");
+                            return doc;
+                        }
+                        catch (Exception testEx)
+                        {
+                            LogError($"[GetHtmlDocument] ❌ Limited interface - doc.body failed: {testEx.Message}");
+                            LogInfo("[GetHtmlDocument] Document alındı ama limited interface, devam ediliyor...");
+                        }
+                    }
+                    else
+                    {
+                        LogWarning("[GetHtmlDocument] ⚠️ GetHtmlDocumentFromHwnd null döndü");
+                    }
+                }
+                else
+                {
+                    LogWarning("[GetHtmlDocument] ⚠️ Element HWND bulunamadı veya 0");
                 }
 
                 // Alternatif: Root'tan başlayarak IHTMLDocument2 bul
-                return FindHtmlDocumentInProcess();
+                LogInfo("[GetHtmlDocument] → FindHtmlDocumentInProcess deneniyor...");
+                var fallbackDoc = FindHtmlDocumentInProcess();
+                if (fallbackDoc != null)
+                {
+                    LogInfo("[GetHtmlDocument] ✅ FindHtmlDocumentInProcess başarılı");
+                    return fallbackDoc;
+                }
+
+                LogError("[GetHtmlDocument] ❌ Tüm yöntemler başarısız");
+                return null;
             }
             catch (Exception ex)
             {
-                LogError($"GetHtmlDocument error: {ex.Message}");
+                LogError($"[GetHtmlDocument] ❌ Exception: {ex.Message}");
+                LogError($"[GetHtmlDocument] Stack trace: {ex.StackTrace}");
                 return null;
             }
         }
@@ -902,7 +1058,42 @@ namespace MedulaOtomasyon
             ref Guid riid,
             ref IntPtr ppvObject);
 
+        [DllImport("oleacc.dll")]
+        private static extern int ObjectFromLresult(
+            IntPtr lResult,
+            ref Guid riid,
+            IntPtr wParam,
+            out IntPtr ppvObject);
+
         private const uint OBJID_WINDOW = 0x00000000;
+        private const uint OBJID_CLIENT = 0xFFFFFFFC;
+
+        [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+        private static extern IntPtr FindWindowEx(IntPtr hwndParent, IntPtr hwndChildAfter, string? lpszClass, string? lpszWindow);
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto)]
+        private static extern int GetClassName(IntPtr hWnd, System.Text.StringBuilder lpClassName, int nMaxCount);
+
+        private delegate bool EnumChildCallback(IntPtr hwnd, IntPtr lParam);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool EnumChildWindows(IntPtr hwndParent, EnumChildCallback lpEnumFunc, IntPtr lParam);
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto)]
+        private static extern uint RegisterWindowMessage(string lpString);
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto)]
+        private static extern IntPtr SendMessageTimeout(
+            IntPtr hWnd,
+            uint Msg,
+            IntPtr wParam,
+            IntPtr lParam,
+            uint fuFlags,
+            uint uTimeout,
+            out IntPtr lpdwResult);
+
+        private const uint SMTO_ABORTIFHUNG = 0x0002;
 
         /// <summary>
         /// Window handle'dan HTML Document interface'ini alır (dynamic)
@@ -912,20 +1103,188 @@ namespace MedulaOtomasyon
             try
             {
                 Guid IID_IHTMLDocument2 = new Guid("626FC520-A41E-11CF-A731-00A0C9082637");
-                IntPtr pDoc = IntPtr.Zero;
 
-                int result = AccessibleObjectFromWindow(hwnd, OBJID_WINDOW, ref IID_IHTMLDocument2, ref pDoc);
-
-                if (pDoc != IntPtr.Zero)
+                // METHOD 1: Try WM_HTML_GETOBJECT (most reliable for Internet Explorer)
+                LogInfo($"[GetHtmlDocumentFromHwnd] === METHOD 1: WM_HTML_GETOBJECT on HWND {hwnd} ===");
+                uint msg = RegisterWindowMessage("WM_HTML_GETOBJECT");
+                if (msg != 0)
                 {
-                    dynamic doc = Marshal.GetObjectForIUnknown(pDoc);
-                    Marshal.Release(pDoc);
+                    LogInfo($"[GetHtmlDocumentFromHwnd] WM_HTML_GETOBJECT message registered: {msg}");
+                    IntPtr lResult = IntPtr.Zero;
+                    IntPtr sendResult = SendMessageTimeout(
+                        new IntPtr(hwnd),
+                        msg,
+                        IntPtr.Zero,
+                        IntPtr.Zero,
+                        SMTO_ABORTIFHUNG,
+                        1000,
+                        out lResult);
+
+                    if (lResult != IntPtr.Zero)
+                    {
+                        LogInfo($"[GetHtmlDocumentFromHwnd] ✓ SendMessage returned lResult: {lResult}");
+
+                        // Use ObjectFromLresult to get the IHTMLDocument2
+                        int hr = ObjectFromLresult(lResult, ref IID_IHTMLDocument2, IntPtr.Zero, out IntPtr pDoc);
+
+                        if (hr == 0 && pDoc != IntPtr.Zero)
+                        {
+                            LogInfo("[GetHtmlDocumentFromHwnd] ✅✅✅ SUCCESS! Got IHTMLDocument2 using WM_HTML_GETOBJECT!");
+                            dynamic doc = Marshal.GetObjectForIUnknown(pDoc);
+                            Marshal.Release(pDoc);
+                            return doc;
+                        }
+                        else
+                        {
+                            LogWarning($"[GetHtmlDocumentFromHwnd] ObjectFromLresult failed (hr={hr}, pDoc={pDoc})");
+                        }
+                    }
+                    else
+                    {
+                        LogWarning("[GetHtmlDocumentFromHwnd] SendMessage returned 0");
+                    }
+                }
+                else
+                {
+                    LogWarning("[GetHtmlDocumentFromHwnd] RegisterWindowMessage failed");
+                }
+
+                // METHOD 2: Try OBJID_CLIENT
+                LogInfo($"[GetHtmlDocumentFromHwnd] === METHOD 2: OBJID_CLIENT on HWND {hwnd} ===");
+                IntPtr pDoc2 = IntPtr.Zero;
+                int result = AccessibleObjectFromWindow(hwnd, OBJID_CLIENT, ref IID_IHTMLDocument2, ref pDoc2);
+
+                if (pDoc2 != IntPtr.Zero)
+                {
+                    LogInfo("[GetHtmlDocumentFromHwnd] ✅✅✅ Got IHTMLDocument2 using OBJID_CLIENT!");
+                    dynamic doc = Marshal.GetObjectForIUnknown(pDoc2);
+                    Marshal.Release(pDoc2);
                     return doc;
                 }
+
+                // METHOD 3: Try OBJID_WINDOW as fallback
+                LogInfo($"[GetHtmlDocumentFromHwnd] === METHOD 3: OBJID_WINDOW on HWND {hwnd} ===");
+                pDoc2 = IntPtr.Zero;
+                result = AccessibleObjectFromWindow(hwnd, OBJID_WINDOW, ref IID_IHTMLDocument2, ref pDoc2);
+
+                if (pDoc2 != IntPtr.Zero)
+                {
+                    LogInfo("[GetHtmlDocumentFromHwnd] ✅ Got IHTMLDocument2 using OBJID_WINDOW");
+                    dynamic doc = Marshal.GetObjectForIUnknown(pDoc2);
+                    Marshal.Release(pDoc2);
+                    return doc;
+                }
+
+                // Ana window başarısız - Child window'ları enumerate et
+                LogInfo("[GetHtmlDocumentFromHwnd] Main window failed, enumerating all child windows...");
+
+                // Önce bilinen class name'leri dene
+                string[] knownClasses = new[]
+                {
+                    "Internet Explorer_Server",  // IE/Edge IE mode
+                    "Chrome_RenderWidgetHostHWND",  // Chromium/Edge
+                    "Shell DocObject View",  // Explorer view
+                    "WebBrowser"  // Generic WebBrowser control
+                };
+
+                foreach (var className in knownClasses)
+                {
+                    IntPtr childHwnd = FindWindowEx(new IntPtr(hwnd), IntPtr.Zero, className, null);
+                    if (childHwnd != IntPtr.Zero)
+                    {
+                        LogInfo($"[GetHtmlDocumentFromHwnd] ✓ Found '{className}' child: {childHwnd.ToInt32()}");
+
+                        // Try OBJID_CLIENT first
+                        IntPtr pDoc3 = IntPtr.Zero;
+                        int res3 = AccessibleObjectFromWindow(childHwnd.ToInt32(), OBJID_CLIENT, ref IID_IHTMLDocument2, ref pDoc3);
+
+                        if (pDoc3 != IntPtr.Zero)
+                        {
+                            LogInfo($"[GetHtmlDocumentFromHwnd] ✅✅✅ Got IHTMLDocument2 from '{className}' child using OBJID_CLIENT!");
+                            dynamic doc = Marshal.GetObjectForIUnknown(pDoc3);
+                            Marshal.Release(pDoc3);
+                            return doc;
+                        }
+
+                        // Try OBJID_WINDOW as fallback
+                        pDoc3 = IntPtr.Zero;
+                        res3 = AccessibleObjectFromWindow(childHwnd.ToInt32(), OBJID_WINDOW, ref IID_IHTMLDocument2, ref pDoc3);
+
+                        if (pDoc3 != IntPtr.Zero)
+                        {
+                            LogInfo($"[GetHtmlDocumentFromHwnd] ✅ Got IHTMLDocument2 from '{className}' child using OBJID_WINDOW");
+                            dynamic doc = Marshal.GetObjectForIUnknown(pDoc3);
+                            Marshal.Release(pDoc3);
+                            return doc;
+                        }
+                        else
+                        {
+                            LogWarning($"[GetHtmlDocumentFromHwnd] Both OBJID_CLIENT and OBJID_WINDOW failed on '{className}' child");
+                        }
+                    }
+                }
+
+                // Bilinen class'lar çalışmadı - TÜM child window'ları tara
+                LogInfo("[GetHtmlDocumentFromHwnd] Known classes failed, scanning ALL child windows...");
+                List<IntPtr> childWindows = new List<IntPtr>();
+
+                EnumChildWindows(new IntPtr(hwnd), (childHwnd, lParam) =>
+                {
+                    childWindows.Add(childHwnd);
+                    return true; // Continue enumeration
+                }, IntPtr.Zero);
+
+                LogInfo($"[GetHtmlDocumentFromHwnd] Found {childWindows.Count} child windows total");
+
+                foreach (var childHwnd in childWindows)
+                {
+                    try
+                    {
+                        // Class name al
+                        var classNameBuilder = new System.Text.StringBuilder(256);
+                        GetClassName(childHwnd, classNameBuilder, classNameBuilder.Capacity);
+                        string childClassName = classNameBuilder.ToString();
+
+                        if (!string.IsNullOrEmpty(childClassName))
+                        {
+                            LogInfo($"[GetHtmlDocumentFromHwnd]   Trying child HWND {childHwnd.ToInt32()}, class: '{childClassName}'");
+
+                            // Try OBJID_CLIENT first
+                            IntPtr pDoc4 = IntPtr.Zero;
+                            int res4 = AccessibleObjectFromWindow(childHwnd.ToInt32(), OBJID_CLIENT, ref IID_IHTMLDocument2, ref pDoc4);
+
+                            if (pDoc4 != IntPtr.Zero)
+                            {
+                                LogInfo($"[GetHtmlDocumentFromHwnd] ✅✅✅ SUCCESS! Got IHTMLDocument2 from child '{childClassName}' using OBJID_CLIENT!");
+                                dynamic doc = Marshal.GetObjectForIUnknown(pDoc4);
+                                Marshal.Release(pDoc4);
+                                return doc;
+                            }
+
+                            // Try OBJID_WINDOW as fallback
+                            pDoc4 = IntPtr.Zero;
+                            res4 = AccessibleObjectFromWindow(childHwnd.ToInt32(), OBJID_WINDOW, ref IID_IHTMLDocument2, ref pDoc4);
+
+                            if (pDoc4 != IntPtr.Zero)
+                            {
+                                LogInfo($"[GetHtmlDocumentFromHwnd] ✅ SUCCESS! Got IHTMLDocument2 from child '{childClassName}' using OBJID_WINDOW");
+                                dynamic doc = Marshal.GetObjectForIUnknown(pDoc4);
+                                Marshal.Release(pDoc4);
+                                return doc;
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        LogWarning($"[GetHtmlDocumentFromHwnd]   Child {childHwnd.ToInt32()} error: {ex.Message}");
+                    }
+                }
+
+                LogError("[GetHtmlDocumentFromHwnd] ❌ No child window provided IHTMLDocument2 interface");
             }
             catch (Exception ex)
             {
-                LogError($"GetHtmlDocumentFromHwnd error: {ex.Message}");
+                LogError($"[GetHtmlDocumentFromHwnd] ❌ Exception: {ex.Message}");
             }
 
             return null;
@@ -938,49 +1297,144 @@ namespace MedulaOtomasyon
         {
             try
             {
+                LogInfo($"[FindHtmlDocumentInProcess] Starting search - targetHwnd: {targetHwnd?.ToString() ?? "null"}, targetProcessId: {targetProcessId?.ToString() ?? "null"}");
+
                 // SHDocVw COM type'ını oluştur
                 Type? shellWindowsType = Type.GetTypeFromProgID("Shell.Application");
                 if (shellWindowsType == null)
                 {
-                    LogWarning("Shell.Application COM type not found");
+                    LogError("[FindHtmlDocumentInProcess] ❌ Shell.Application COM type not found");
                     return null;
                 }
+
+                LogInfo("[FindHtmlDocumentInProcess] ✓ Shell.Application COM type created");
 
                 dynamic shellWindows = Activator.CreateInstance(shellWindowsType)!;
                 dynamic windows = shellWindows.Windows();
 
+                int windowCount = 0;
+                try { windowCount = windows.Count; }
+                catch (Exception ex)
+                {
+                    LogError($"[FindHtmlDocumentInProcess] ❌ Cannot get windows count: {ex.Message}");
+                    return null;
+                }
+
+                LogInfo($"[FindHtmlDocumentInProcess] Found {windowCount} shell windows");
+
+                if (windowCount == 0)
+                {
+                    LogWarning("[FindHtmlDocumentInProcess] ⚠️ No shell windows found - is IE/Edge browser running?");
+                    return null;
+                }
+
                 // Tüm IE/Browser window'larını kontrol et
-                for (int i = 0; i < windows.Count; i++)
+                for (int i = 0; i < windowCount; i++)
                 {
                     try
                     {
+                        LogInfo($"[FindHtmlDocumentInProcess] Checking window #{i}...");
+
                         dynamic window = windows.Item(i);
-                        dynamic doc = window.Document;
-
-                        if (doc != null)
+                        if (window == null)
                         {
-                            string url = doc.url?.ToString() ?? "";
-                            LogInfo($"Found HTML document: {url}");
-                            try
-                            {
-                                int? windowHandle = null;
-                                try { windowHandle = (int)window.HWND; }
-                                catch { }
+                            LogWarning($"[FindHtmlDocumentInProcess]   Window #{i} is null");
+                            continue;
+                        }
 
-                                if (!targetHwnd.HasValue || (windowHandle.HasValue && windowHandle.Value == targetHwnd.Value))
+                        dynamic doc = null;
+                        try
+                        {
+                            doc = window.Document;
+                            if (doc == null)
+                            {
+                                LogWarning($"[FindHtmlDocumentInProcess]   Window #{i} has no Document property");
+                                continue;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            LogWarning($"[FindHtmlDocumentInProcess]   Window #{i} Document access failed: {ex.Message}");
+                            continue;
+                        }
+
+                        string url = "";
+                        try { url = doc.url?.ToString() ?? ""; }
+                        catch { url = "(URL access failed)"; }
+
+                        LogInfo($"[FindHtmlDocumentInProcess]   ✓ Window #{i} has HTML document: {url}");
+
+                        // Window handle al
+                        int? windowHandle = null;
+                        try
+                        {
+                            windowHandle = (int)window.HWND;
+                            LogInfo($"[FindHtmlDocumentInProcess]   Window #{i} HWND: {windowHandle}");
+                        }
+                        catch (Exception ex)
+                        {
+                            LogWarning($"[FindHtmlDocumentInProcess]   Window #{i} HWND access failed: {ex.Message}");
+                        }
+
+                        // Hedef hwnd kontrolü
+                        if (targetHwnd.HasValue)
+                        {
+                            if (windowHandle.HasValue && windowHandle.Value == targetHwnd.Value)
+                            {
+                                LogInfo($"[FindHtmlDocumentInProcess] ✅ MATCH! Window #{i} matches target HWND {targetHwnd}");
+
+                                // HWND üzerinden FULL IHTMLDocument2 interface'ini al (Shell.Application'dan gelen kısıtlı değil)
+                                LogInfo("[FindHtmlDocumentInProcess] → Getting full IHTMLDocument2 via GetHtmlDocumentFromHwnd...");
+                                dynamic? fullDoc = GetHtmlDocumentFromHwnd(targetHwnd.Value);
+                                if (fullDoc != null)
                                 {
+                                    LogInfo("[FindHtmlDocumentInProcess] ✅ Got full IHTMLDocument2 interface with DOM support");
+                                    return fullDoc;
+                                }
+                                else
+                                {
+                                    LogWarning("[FindHtmlDocumentInProcess] ⚠️ GetHtmlDocumentFromHwnd failed, using limited Shell.Application document");
                                     return doc;
                                 }
                             }
-                            catch { }
+                            else
+                            {
+                                LogInfo($"[FindHtmlDocumentInProcess]   Window #{i} HWND {windowHandle} doesn't match target {targetHwnd}, skipping");
+                                continue;
+                            }
                         }
+
+                        // Hedef yok - HWND üzerinden tam interface al
+                        if (windowHandle.HasValue)
+                        {
+                            LogInfo($"[FindHtmlDocumentInProcess] ✅ Found window #{i}, getting full IHTMLDocument2 via HWND {windowHandle}");
+                            dynamic? fullDocument = GetHtmlDocumentFromHwnd(windowHandle.Value);
+                            if (fullDocument != null)
+                            {
+                                LogInfo("[FindHtmlDocumentInProcess] ✅ Got full IHTMLDocument2 interface with DOM support");
+                                return fullDocument;
+                            }
+                            else
+                            {
+                                LogWarning("[FindHtmlDocumentInProcess] ⚠️ GetHtmlDocumentFromHwnd failed, using limited Shell.Application document");
+                            }
+                        }
+
+                        LogInfo($"[FindHtmlDocumentInProcess] ✅ Returning window #{i} document (Shell.Application fallback)");
+                        return doc;
                     }
-                    catch { }
+                    catch (Exception ex)
+                    {
+                        LogWarning($"[FindHtmlDocumentInProcess]   Window #{i} processing error: {ex.Message}");
+                    }
                 }
+
+                LogError("[FindHtmlDocumentInProcess] ❌ No valid HTML document found in any window");
             }
             catch (Exception ex)
             {
-                LogError($"FindHtmlDocumentInProcess error: {ex.Message}");
+                LogError($"[FindHtmlDocumentInProcess] ❌ Fatal error: {ex.Message}");
+                LogError($"[FindHtmlDocumentInProcess]    Stack: {ex.StackTrace}");
             }
 
             return null;
@@ -988,44 +1442,72 @@ namespace MedulaOtomasyon
 
         private dynamic? GetDocumentForRecordedElement(RecordedElement element)
         {
+            LogInfo("[GetDocumentForRecordedElement] Starting search for HTML document...");
+
             try
             {
                 var htmlInfo = element.HtmlInfo;
                 if (htmlInfo != null)
                 {
+                    LogInfo($"[GetDocumentForRecordedElement] HtmlInfo available - BrowserWindowHandle: {htmlInfo.BrowserWindowHandle}, BrowserProcessId: {htmlInfo.BrowserProcessId}");
+
                     if (htmlInfo.BrowserWindowHandle != 0)
                     {
+                        LogInfo($"[GetDocumentForRecordedElement] → Trying GetHtmlDocumentFromHwnd({htmlInfo.BrowserWindowHandle})...");
                         var handleDoc = GetHtmlDocumentFromHwnd(htmlInfo.BrowserWindowHandle);
                         if (handleDoc != null)
                         {
-                            LogInfo("Using cached browser window handle for HTML document");
+                            LogInfo("[GetDocumentForRecordedElement] ✅ Using cached browser window handle for HTML document");
                             return handleDoc;
                         }
+                        else
+                        {
+                            LogWarning("[GetDocumentForRecordedElement] ❌ GetHtmlDocumentFromHwnd returned null");
+                        }
                     }
+                }
+                else
+                {
+                    LogWarning("[GetDocumentForRecordedElement] ⚠️ HtmlInfo is null!");
                 }
             }
             catch (Exception ex)
             {
-                LogWarning($"GetDocumentForRecordedElement (handle) failed: {ex.Message}");
+                LogError($"[GetDocumentForRecordedElement] ❌ Exception in handle lookup: {ex.Message}");
             }
 
             int? targetHwnd = null;
             if (element.HtmlInfo?.BrowserWindowHandle > 0)
             {
                 targetHwnd = element.HtmlInfo.BrowserWindowHandle;
+                LogInfo($"[GetDocumentForRecordedElement] Using targetHwnd: {targetHwnd}");
             }
 
             int? targetPid = null;
             if (element.HtmlInfo?.BrowserProcessId > 0)
             {
                 targetPid = element.HtmlInfo.BrowserProcessId;
+                LogInfo($"[GetDocumentForRecordedElement] Using targetPid: {targetPid}");
             }
 
+            LogInfo("[GetDocumentForRecordedElement] → Trying FindHtmlDocumentInProcess with target info...");
             var resolvedDoc = FindHtmlDocumentInProcess(targetHwnd, targetPid);
             if (resolvedDoc != null)
+            {
+                LogInfo("[GetDocumentForRecordedElement] ✅ Found document via FindHtmlDocumentInProcess (with targets)");
                 return resolvedDoc;
+            }
 
-            return FindHtmlDocumentInProcess();
+            LogInfo("[GetDocumentForRecordedElement] → Trying FindHtmlDocumentInProcess without targets (fallback)...");
+            var fallbackDoc = FindHtmlDocumentInProcess();
+            if (fallbackDoc != null)
+            {
+                LogInfo("[GetDocumentForRecordedElement] ✅ Found document via FindHtmlDocumentInProcess (fallback)");
+                return fallbackDoc;
+            }
+
+            LogError("[GetDocumentForRecordedElement] ❌ HTML document NOT FOUND in any method!");
+            return null;
         }
 
         /// <summary>
@@ -1206,7 +1688,47 @@ namespace MedulaOtomasyon
             // Class + text fallback
             if (htmlInfo.TextContent?.Any() == true)
             {
-                var allElements = doc.all;
+                LogInfo("[FindRowByHtmlInfo] → Trying to find row by text content match...");
+
+                dynamic? allElements = null;
+                try
+                {
+                    // doc.all eski IE property'si, bazı COM objelerinde çalışmayabilir
+                    allElements = doc.all;
+                    LogInfo("[FindRowByHtmlInfo]   Using doc.all");
+                }
+                catch (Exception ex1)
+                {
+                    LogWarning($"[FindRowByHtmlInfo]   doc.all not supported: {ex1.Message}");
+
+                    // doc.all desteklenmiyorsa getElementsByTagName("*") dene
+                    try
+                    {
+                        allElements = doc.getElementsByTagName("*");
+                        LogInfo("[FindRowByHtmlInfo]   Using doc.getElementsByTagName('*')");
+                    }
+                    catch (Exception ex2)
+                    {
+                        LogWarning($"[FindRowByHtmlInfo]   doc.getElementsByTagName('*') not supported: {ex2.Message}");
+
+                        // Her ikisi de çalışmıyorsa body üzerinden dene
+                        try
+                        {
+                            dynamic body = doc.body;
+                            if (body != null)
+                            {
+                                allElements = body.getElementsByTagName("tr");
+                                LogInfo("[FindRowByHtmlInfo]   Using doc.body.getElementsByTagName('tr')");
+                            }
+                        }
+                        catch (Exception ex3)
+                        {
+                            LogError($"[FindRowByHtmlInfo]   All methods failed: {ex3.Message}");
+                            return null;
+                        }
+                    }
+                }
+
                 if (allElements != null)
                 {
                     int count;
@@ -1261,8 +1783,34 @@ namespace MedulaOtomasyon
                 dynamic table = GetElementById(doc, tableId);
                 if (table == null)
                 {
+                    LogInfo($"[GetTableRowByIndex] Table with id '{tableId}' not found via getElementById, scanning...");
+
                     // Fallback: tüm tablolarda ara
-                    var all = doc.all;
+                    dynamic? all = null;
+                    try
+                    {
+                        all = doc.all;
+                    }
+                    catch (Exception ex1)
+                    {
+                        LogWarning($"[GetTableRowByIndex] doc.all not supported: {ex1.Message}");
+
+                        try
+                        {
+                            dynamic body = doc.body;
+                            if (body != null)
+                            {
+                                all = body.getElementsByTagName("table");
+                                LogInfo("[GetTableRowByIndex] Using doc.body.getElementsByTagName('table')");
+                            }
+                        }
+                        catch (Exception ex2)
+                        {
+                            LogError($"[GetTableRowByIndex] All methods failed: {ex2.Message}");
+                            return null;
+                        }
+                    }
+
                     if (all != null)
                     {
                         int count;
@@ -1489,6 +2037,11 @@ namespace MedulaOtomasyon
             }
 
             PopulateWindowInfo(recorded, element);
+
+            // Browser bilgilerini topla (FindWebBrowserControl ile)
+            LogInfo("🌐 Browser bilgileri toplanıyor (Generic element için)...");
+            TryPopulateBrowserInfo(recorded, element);
+
             return recorded;
         }
 
@@ -1545,6 +2098,70 @@ namespace MedulaOtomasyon
                 LogWarning($"PopulateWindowInfo failed: {ex.Message}");
             }
         }
+
+        /// <summary>
+        /// Browser bilgilerini (window handle, process ID) RecordedElement'e ekler
+        /// </summary>
+        private void TryPopulateBrowserInfo(RecordedElement recordedElement, AutomationElement element)
+        {
+            try
+            {
+                LogInfo("[TryPopulateBrowserInfo] === BAŞLAMA ===");
+                LogInfo("[TryPopulateBrowserInfo] Finding browser control via UI Automation...");
+
+                // Element'ten WebBrowser kontrolünü bul
+                var browserControl = FindWebBrowserControl(element);
+                if (browserControl == null)
+                {
+                    LogWarning("[TryPopulateBrowserInfo] ⚠️ WebBrowser control not found");
+                    return;
+                }
+
+                LogInfo("[TryPopulateBrowserInfo] ✅ WebBrowser control found");
+                LogInfo($"[TryPopulateBrowserInfo]    ClassName: {browserControl.Current.ClassName}");
+                LogInfo($"[TryPopulateBrowserInfo]    ControlType: {browserControl.Current.ControlType.ProgrammaticName}");
+
+                // HWND'yi browser control'den al
+                var nativeElement = browserControl.GetCurrentPropertyValue(AutomationElement.NativeWindowHandleProperty);
+                if (nativeElement == null || !(nativeElement is int hwnd) || hwnd == 0)
+                {
+                    LogWarning("[TryPopulateBrowserInfo] ⚠️ Could not get HWND from browser control");
+                    return;
+                }
+
+                LogInfo($"[TryPopulateBrowserInfo] ✅ Got HWND from browser control: {hwnd}");
+
+                // RecordedElement'e kaydet
+                recordedElement.HtmlInfo ??= new HtmlInfo();
+                recordedElement.HtmlInfo.BrowserWindowHandle = hwnd;
+                LogInfo($"[TryPopulateBrowserInfo]   ✓ BrowserWindowHandle: {hwnd}");
+
+                // Process ID'yi window handle'dan çıkar
+                try
+                {
+                    GetWindowThreadProcessId(hwnd, out uint processId);
+                    if (processId > 0)
+                    {
+                        recordedElement.HtmlInfo.BrowserProcessId = (int)processId;
+                        LogInfo($"[TryPopulateBrowserInfo]   ✓ BrowserProcessId: {processId}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogWarning($"[TryPopulateBrowserInfo]   ProcessId extraction failed: {ex.Message}");
+                }
+
+                LogInfo("[TryPopulateBrowserInfo] ✅✅✅ Browser info population completed successfully!");
+            }
+            catch (Exception ex)
+            {
+                LogError($"[TryPopulateBrowserInfo] ❌ Fatal error: {ex.Message}");
+                LogError($"[TryPopulateBrowserInfo] Stack trace: {ex.StackTrace}");
+            }
+        }
+
+        [DllImport("user32.dll")]
+        private static extern uint GetWindowThreadProcessId(int hWnd, out uint processId);
 
         #endregion
 
@@ -1702,16 +2319,23 @@ namespace MedulaOtomasyon
         {
             try
             {
+                LogInfo("[TryExecutePlaywrightSelector] Starting...");
+
                 if (!strategy.Properties.TryGetValue("SelectorKind", out var kindRaw))
+                {
+                    LogWarning("[TryExecutePlaywrightSelector] ❌ SelectorKind not found in strategy properties");
                     return false;
+                }
 
                 var kind = kindRaw?.Trim().ToLowerInvariant() ?? string.Empty;
+                LogInfo($"[TryExecutePlaywrightSelector] SelectorKind: {kind}");
 
                 if (strategy.Properties.TryGetValue("BrowserWindowHandle", out var handleStr) &&
                     int.TryParse(handleStr, out var handle) && handle > 0)
                 {
                     recordedElement.HtmlInfo ??= new HtmlInfo();
                     recordedElement.HtmlInfo.BrowserWindowHandle = handle;
+                    LogInfo($"[TryExecutePlaywrightSelector] BrowserWindowHandle: {handle}");
                 }
 
                 if (strategy.Properties.TryGetValue("BrowserProcessId", out var pidStr) &&
@@ -1719,40 +2343,69 @@ namespace MedulaOtomasyon
                 {
                     recordedElement.HtmlInfo ??= new HtmlInfo();
                     recordedElement.HtmlInfo.BrowserProcessId = pid;
+                    LogInfo($"[TryExecutePlaywrightSelector] BrowserProcessId: {pid}");
                 }
 
+                bool result = false;
                 switch (kind)
                 {
                     case "table-row":
                     case "row-index":
-                        return TryClickByTableRowIndex(recordedElement) || TryClickHtmlRowByIndex(recordedElement);
+                        LogInfo("[TryExecutePlaywrightSelector] → Trying TryClickByTableRowIndex...");
+                        result = TryClickByTableRowIndex(recordedElement);
+                        if (!result)
+                        {
+                            LogInfo("[TryExecutePlaywrightSelector] → TryClickByTableRowIndex failed, trying TryClickHtmlRowByIndex...");
+                            result = TryClickHtmlRowByIndex(recordedElement);
+                        }
+                        LogInfo($"[TryExecutePlaywrightSelector] table-row result: {(result ? "✅" : "❌")}");
+                        return result;
 
                     case "css":
                         if (strategy.Properties.TryGetValue("Selector", out var cssSelector))
                         {
+                            LogInfo($"[TryExecutePlaywrightSelector] → Trying TryClickByCssSelector: {cssSelector}");
                             if (TryClickByCssSelector(recordedElement, cssSelector))
+                            {
+                                LogInfo("[TryExecutePlaywrightSelector] css result: ✅");
                                 return true;
+                            }
                         }
-                        return TryClickHtmlRowByIndex(recordedElement);
+                        LogInfo("[TryExecutePlaywrightSelector] → CSS failed, trying TryClickHtmlRowByIndex...");
+                        result = TryClickHtmlRowByIndex(recordedElement);
+                        LogInfo($"[TryExecutePlaywrightSelector] css fallback result: {(result ? "✅" : "❌")}");
+                        return result;
 
                     case "xpath":
                         if (strategy.Properties.TryGetValue("Selector", out var xpathSelector))
                         {
+                            LogInfo($"[TryExecutePlaywrightSelector] → Trying TryClickByXPath: {xpathSelector}");
                             if (TryClickByXPath(recordedElement, xpathSelector))
+                            {
+                                LogInfo("[TryExecutePlaywrightSelector] xpath result: ✅");
                                 return true;
+                            }
                         }
-                        return TryClickHtmlRowByIndex(recordedElement);
+                        LogInfo("[TryExecutePlaywrightSelector] → XPath failed, trying TryClickHtmlRowByIndex...");
+                        result = TryClickHtmlRowByIndex(recordedElement);
+                        LogInfo($"[TryExecutePlaywrightSelector] xpath fallback result: {(result ? "✅" : "❌")}");
+                        return result;
 
                     case "text":
-                        return TryClickByTextContent(recordedElement);
+                        LogInfo("[TryExecutePlaywrightSelector] → Trying TryClickByTextContent...");
+                        result = TryClickByTextContent(recordedElement);
+                        LogInfo($"[TryExecutePlaywrightSelector] text result: {(result ? "✅" : "❌")}");
+                        return result;
 
                     default:
+                        LogWarning($"[TryExecutePlaywrightSelector] ❌ Unknown SelectorKind: {kind}");
                         return false;
                 }
             }
             catch (Exception ex)
             {
-                LogWarning($"Playwright selector execution failed: {ex.Message}");
+                LogError($"[TryExecutePlaywrightSelector] ❌ Exception: {ex.Message}");
+                LogError($"[TryExecutePlaywrightSelector] Stack: {ex.StackTrace}");
                 return false;
             }
         }
@@ -1786,19 +2439,52 @@ namespace MedulaOtomasyon
                         {
                             if (index == element.TableInfo.RowIndex)
                             {
-                                // Click pattern ile tıkla
-                                if (row.TryGetCurrentPattern(InvokePattern.Pattern, out object pattern))
+                                // DÜZELTME: UI Automation pattern'leri kullan, koordinat tıklaması yapma!
+
+                                // 1. InvokePattern dene
+                                if (row.TryGetCurrentPattern(InvokePattern.Pattern, out object invokePattern))
                                 {
-                                    ((InvokePattern)pattern).Invoke();
-                                    LogSuccess("✅ Clicked via Row Index (UIA)");
+                                    ((InvokePattern)invokePattern).Invoke();
+                                    LogSuccess("✅ Clicked via Row Index using InvokePattern (UIA)");
                                     return true;
                                 }
 
-                                // Alternatif: Mouse event simülasyonu
-                                var clickPoint = row.GetClickablePoint();
-                                SimulateClick(clickPoint);
-                                LogSuccess("✅ Clicked via simulated mouse (UIA)");
-                                return true;
+                                // 2. SelectionItemPattern dene
+                                if (row.TryGetCurrentPattern(SelectionItemPattern.Pattern, out object selectionPattern))
+                                {
+                                    ((SelectionItemPattern)selectionPattern).Select();
+                                    LogSuccess("✅ Selected via Row Index using SelectionItemPattern (UIA)");
+                                    return true;
+                                }
+
+                                // 3. ExpandCollapsePattern dene (bazı satırlar expand edilebilir)
+                                if (row.TryGetCurrentPattern(ExpandCollapsePattern.Pattern, out object expandPattern))
+                                {
+                                    var expandState = ((ExpandCollapsePattern)expandPattern).Current.ExpandCollapseState;
+                                    if (expandState == ExpandCollapseState.Collapsed)
+                                    {
+                                        ((ExpandCollapsePattern)expandPattern).Expand();
+                                        LogSuccess("✅ Expanded via Row Index using ExpandCollapsePattern (UIA)");
+                                        return true;
+                                    }
+                                }
+
+                                // 4. Focus + SendKeys.Send("{ENTER}") dene
+                                try
+                                {
+                                    row.SetFocus();
+                                    Thread.Sleep(100);
+                                    SendKeys.SendWait("{ENTER}");
+                                    LogSuccess("✅ Clicked via Row Index using Focus + Enter key (UIA)");
+                                    return true;
+                                }
+                                catch
+                                {
+                                    LogWarning("Focus + Enter key failed");
+                                }
+
+                                LogWarning("❌ No suitable UIA pattern found for clicking row");
+                                return false;
                             }
 
                             index++;
@@ -2105,17 +2791,29 @@ namespace MedulaOtomasyon
 
         private bool TryClickHtmlRowByIndex(RecordedElement element)
         {
+            LogInfo("[TryClickHtmlRowByIndex] Starting...");
+
             var htmlInfo = element.HtmlInfo;
             if (htmlInfo == null && element.TableInfo?.HtmlRowIndex < 0)
+            {
+                LogWarning("[TryClickHtmlRowByIndex] ❌ No HtmlInfo or TableInfo.HtmlRowIndex");
                 return false;
+            }
 
             try
             {
                 var doc = GetDocumentForRecordedElement(element);
-                if (doc == null) return false;
+                if (doc == null)
+                {
+                    LogError("[TryClickHtmlRowByIndex] ❌ GetDocumentForRecordedElement returned NULL - Cannot proceed");
+                    return false;
+                }
+
+                LogInfo("[TryClickHtmlRowByIndex] ✅ HTML Document found");
 
                 string? tableId = element.TableInfo?.HtmlTableId ?? htmlInfo?.TableId;
                 int rowIndex = element.TableInfo?.HtmlRowIndex ?? htmlInfo?.TableRowIndex ?? -1;
+                LogInfo($"[TryClickHtmlRowByIndex] TableId: {tableId ?? "N/A"}, RowIndex: {rowIndex}");
 
                 dynamic? row = null;
                 if (!string.IsNullOrEmpty(tableId) && rowIndex >= 0)
@@ -2146,18 +2844,86 @@ namespace MedulaOtomasyon
 
                 if (row == null && rowIndex >= 0)
                 {
+                    LogInfo("[TryClickHtmlRowByIndex] → Trying fallback: scan all tables for matching row index...");
+
                     try
                     {
-                        dynamic tables = doc.getElementsByTagName("table");
-                        if (tables != null)
-                        {
-                            int tableCount = 0;
-                            try { tableCount = (int)tables.length; }
-                            catch { tableCount = 0; }
+                        // doc.getElementsByTagName() desteklenmiyor, body üzerinden tabloları bul
+                        List<dynamic> tableCandidates = new List<dynamic>();
 
-                            for (int t = 0; t < tableCount && row == null; t++)
+                        // 1. Yöntem: doc.body.getElementsByTagName dene
+                        try
+                        {
+                            dynamic body = doc.body;
+                            if (body != null)
                             {
-                                dynamic tableCandidate = tables.item(t);
+                                dynamic tables = body.getElementsByTagName("table");
+                                if (tables != null)
+                                {
+                                    int count = 0;
+                                    try { count = (int)tables.length; } catch { }
+                                    LogInfo($"[TryClickHtmlRowByIndex]   Found {count} tables via body.getElementsByTagName");
+
+                                    for (int i = 0; i < count; i++)
+                                    {
+                                        try
+                                        {
+                                            dynamic t = tables.item(i);
+                                            if (t != null) tableCandidates.Add(t);
+                                        }
+                                        catch { }
+                                    }
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            LogWarning($"[TryClickHtmlRowByIndex]   body.getElementsByTagName failed: {ex.Message}");
+                        }
+
+                        // 2. Yöntem: doc.forms[0] üzerinden tabloları bul (Medula bir form içinde)
+                        if (tableCandidates.Count == 0)
+                        {
+                            try
+                            {
+                                dynamic forms = doc.forms;
+                                if (forms != null && forms.length > 0)
+                                {
+                                    dynamic form = forms.item(0);
+                                    if (form != null)
+                                    {
+                                        dynamic formTables = form.getElementsByTagName("table");
+                                        if (formTables != null)
+                                        {
+                                            int count = 0;
+                                            try { count = (int)formTables.length; } catch { }
+                                            LogInfo($"[TryClickHtmlRowByIndex]   Found {count} tables via forms[0].getElementsByTagName");
+
+                                            for (int i = 0; i < count; i++)
+                                            {
+                                                try
+                                                {
+                                                    dynamic t = formTables.item(i);
+                                                    if (t != null) tableCandidates.Add(t);
+                                                }
+                                                catch { }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                LogWarning($"[TryClickHtmlRowByIndex]   forms[0].getElementsByTagName failed: {ex.Message}");
+                            }
+                        }
+
+                        // Bulduğumuz tablolarda row index ara
+                        for (int t = 0; t < tableCandidates.Count && row == null; t++)
+                        {
+                            try
+                            {
+                                dynamic tableCandidate = tableCandidates[t];
                                 if (tableCandidate == null) continue;
 
                                 dynamic rows = tableCandidate.rows;
@@ -2165,18 +2931,30 @@ namespace MedulaOtomasyon
 
                                 int rowsCount = 0;
                                 try { rowsCount = (int)rows.length; }
-                                catch { rowsCount = 0; }
+                                catch { continue; }
+
+                                LogInfo($"[TryClickHtmlRowByIndex]   Table {t} has {rowsCount} rows, looking for index {rowIndex}");
 
                                 if (rowIndex >= 0 && rowIndex < rowsCount)
                                 {
                                     row = rows.item(rowIndex);
+                                    LogInfo($"[TryClickHtmlRowByIndex]   ✅ Found row at index {rowIndex} in table {t}");
                                 }
                             }
+                            catch (Exception ex)
+                            {
+                                LogWarning($"[TryClickHtmlRowByIndex]   Table {t} scan error: {ex.Message}");
+                            }
+                        }
+
+                        if (tableCandidates.Count == 0)
+                        {
+                            LogWarning("[TryClickHtmlRowByIndex]   ⚠️ No tables found via any method");
                         }
                     }
                     catch (Exception ex)
                     {
-                        LogWarning($"Fallback table scan failed: {ex.Message}");
+                        LogError($"[TryClickHtmlRowByIndex] ❌ Fallback table scan failed: {ex.Message}");
                     }
                 }
 
@@ -2200,105 +2978,44 @@ namespace MedulaOtomasyon
         {
             try
             {
-                // Önce element'in onclick handler'ını tetikle
+                // DÜZELTME: Sadece element.click() kullan, koordinat tıklaması yapma!
                 element.click();
-                LogInfo("Element.click() called");
+                LogInfo("Element.click() called - UI Automation click successful");
             }
             catch (Exception ex)
             {
-                LogError($"ClickHtmlElement error: {ex.Message}");
+                LogError($"ClickHtmlElement first attempt error: {ex.Message}");
 
-                // Alternatif: Focus + Mouse simülasyonu
+                // Alternatif: Focus + element.click() tekrar dene
                 try
                 {
                     element.focus();
                     Thread.Sleep(100);
                     // Tekrar dene
                     element.click();
+                    LogInfo("Element.click() called after focus - UI Automation click successful");
                 }
-                catch { }
-            }
-
-            try
-            {
-                object? ownerDocumentObj = null;
-                try { ownerDocumentObj = element.ownerDocument; }
-                catch { ownerDocumentObj = null; }
-
-                object? windowObj = null;
-                if (ownerDocumentObj != null)
+                catch (Exception ex2)
                 {
-                    try { windowObj = ((dynamic)ownerDocumentObj).parentWindow; }
-                    catch { windowObj = null; }
-                }
-                double centerX = 0;
-                double centerY = 0;
-                bool hasRect = false;
+                    LogError($"ClickHtmlElement second attempt error: {ex2.Message}");
 
-                try
-                {
-                    dynamic rect = element.getBoundingClientRect();
-                    if (rect != null)
+                    // Son çare: scrollIntoView + click
+                    try
                     {
-                        object? leftObj = null, rightObj = null, topObj = null, bottomObj = null;
-                        try { leftObj = rect.left; } catch { }
-                        try { rightObj = rect.right; } catch { }
-                        try { topObj = rect.top; } catch { }
-                        try { bottomObj = rect.bottom; } catch { }
-
-                        var left = ToDoubleOrDefault(leftObj);
-                        var right = ToDoubleOrDefault(rightObj);
-                        var top = ToDoubleOrDefault(topObj);
-                        var bottom = ToDoubleOrDefault(bottomObj);
-
-                        if (!double.IsNaN(left) && !double.IsNaN(right) &&
-                            !double.IsNaN(top) && !double.IsNaN(bottom))
-                        {
-                            centerX = (left + right) / 2.0;
-                            centerY = (top + bottom) / 2.0;
-                            hasRect = true;
-                        }
+                        element.scrollIntoView(true);
+                        Thread.Sleep(100);
+                        element.click();
+                        LogInfo("Element.click() called after scrollIntoView - UI Automation click successful");
                     }
-                }
-                catch
-                {
-                    hasRect = false;
-                }
-
-                if (hasRect)
-                {
-                    double screenLeft = 0;
-                    double screenTop = 0;
-
-                    if (windowObj != null)
+                    catch (Exception ex3)
                     {
-                        try
-                        {
-                            var dynamicWindow = (dynamic)windowObj;
-                            screenLeft = ToDoubleOrDefault(dynamicWindow.screenLeft, 0);
-                            screenTop = ToDoubleOrDefault(dynamicWindow.screenTop, 0);
-                        }
-                        catch
-                        {
-                            screenLeft = 0;
-                            screenTop = 0;
-                        }
-                    }
-
-                    int clickX = (int)Math.Round(screenLeft + centerX);
-                    int clickY = (int)Math.Round(screenTop + centerY);
-
-                    if (clickX > 0 && clickY > 0)
-                    {
-                        LogInfo($"Simulating mouse click at ({clickX}, {clickY}) based on bounding rect");
-                        SimulateClick(new System.Windows.Point(clickX, clickY));
+                        LogError($"ClickHtmlElement all attempts failed: {ex3.Message}");
                     }
                 }
             }
-            catch (Exception ex)
-            {
-                LogWarning($"Bounding rect click failed: {ex.Message}");
-            }
+
+            // KALDIRILAN: Koordinat bazlı tıklama kodu tamamen kaldırıldı
+            // Kullanıcının isteği üzerine: "koordinat tıklaması oynatma sırasında asla olmamalı"
         }
 
         private bool CellTextsMatch(List<string> actual, List<string> expected)
@@ -2413,21 +3130,25 @@ namespace MedulaOtomasyon
         {
             Console.WriteLine($"[INFO] {message}");
             System.Diagnostics.Debug.WriteLine($"[SmartRecorder] {message}");
+            RecordingStatusChanged?.Invoke(this, $"[INFO] {message}");
         }
 
         private void LogSuccess(string message)
         {
             Console.WriteLine($"[SUCCESS] {message}");
+            RecordingStatusChanged?.Invoke(this, $"[SUCCESS] {message}");
         }
 
         private void LogWarning(string message)
         {
             Console.WriteLine($"[WARNING] {message}");
+            RecordingStatusChanged?.Invoke(this, $"[WARNING] {message}");
         }
 
         private void LogError(string message)
         {
             Console.WriteLine($"[ERROR] {message}");
+            RecordingStatusChanged?.Invoke(this, $"[ERROR] {message}");
         }
 
         #endregion
@@ -2612,10 +3333,18 @@ namespace MedulaOtomasyon
                 recordedElement.ElementType = "TableRow";
                 recordedElement.TableInfo ??= new TableInfo();
 
+                // DÜZELTME: Playwright'ın RowIndex'i var olan değerleri override etmesin!
+                // Sadece değer yoksa (-1 ise) güncelle
                 if (info.RowIndex >= 0)
                 {
-                    recordedElement.TableInfo.RowIndex = info.RowIndex;
-                    recordedElement.TableInfo.HtmlRowIndex = info.RowIndex;
+                    if (recordedElement.TableInfo.RowIndex < 0)
+                    {
+                        recordedElement.TableInfo.RowIndex = info.RowIndex;
+                    }
+                    if (recordedElement.TableInfo.HtmlRowIndex < 0)
+                    {
+                        recordedElement.TableInfo.HtmlRowIndex = info.RowIndex;
+                    }
                 }
 
                 var tableId = ExtractTableId(info.TableSelector);
@@ -2641,7 +3370,8 @@ namespace MedulaOtomasyon
             recordedElement.HtmlInfo ??= new HtmlInfo();
             var htmlInfo = recordedElement.HtmlInfo;
             htmlInfo.TagName ??= "tr";
-            if (info.RowIndex >= 0)
+            // DÜZELTME: Aynı şekilde HtmlInfo'da da override etmemeliyiz
+            if (info.RowIndex >= 0 && htmlInfo.TableRowIndex < 0)
             {
                 htmlInfo.TableRowIndex = info.RowIndex;
             }
@@ -2685,10 +3415,17 @@ namespace MedulaOtomasyon
                     var rowIndex = ExtractNthOfTypeIndex(tableSelector, "tr");
                     if (rowIndex > 0)
                     {
-                        htmlInfo.TableRowIndex = rowIndex - 1;
+                        // DÜZELTME: Sadece değer yoksa (-1) güncelle, mevcut değeri KORUMALISIN!
+                        if (htmlInfo.TableRowIndex < 0)
+                            htmlInfo.TableRowIndex = rowIndex - 1;
+
                         recordedElement.TableInfo ??= new TableInfo();
-                        recordedElement.TableInfo.RowIndex = rowIndex - 1;
-                        recordedElement.TableInfo.HtmlRowIndex = rowIndex - 1;
+
+                        if (recordedElement.TableInfo.RowIndex < 0)
+                            recordedElement.TableInfo.RowIndex = rowIndex - 1;
+
+                        if (recordedElement.TableInfo.HtmlRowIndex < 0)
+                            recordedElement.TableInfo.HtmlRowIndex = rowIndex - 1;
                     }
                 }
 
@@ -2954,24 +3691,37 @@ namespace MedulaOtomasyon
         public bool ExecuteLocatorStrategy(ElementLocatorStrategy strategy)
         {
             if (strategy?.RecordedElement == null)
+            {
+                LogError("❌ Strategy or RecordedElement is null");
                 return false;
+            }
 
             try
             {
                 LogInfo($"🎯 Executing strategy: {strategy.Name}");
+                LogInfo($"   Strategy Type: {strategy.Type}");
 
                 if (strategy.Type == LocatorType.PlaywrightSelector)
                 {
-                    if (TryExecutePlaywrightSelector(strategy.RecordedElement, strategy))
+                    LogInfo("   → Trying PlaywrightSelector...");
+                    bool pwResult = TryExecutePlaywrightSelector(strategy.RecordedElement, strategy);
+                    LogInfo($"   → PlaywrightSelector result: {(pwResult ? "✅ SUCCESS" : "❌ FAILED")}");
+
+                    if (pwResult)
                         return true;
                 }
 
                 // RecordedElement üzerindeki playback metotlarını kullan
-                return PlaybackElement(strategy.RecordedElement);
+                LogInfo("   → Trying PlaybackElement fallback...");
+                bool playbackResult = PlaybackElement(strategy.RecordedElement);
+                LogInfo($"   → PlaybackElement result: {(playbackResult ? "✅ SUCCESS" : "❌ FAILED")}");
+
+                return playbackResult;
             }
             catch (Exception ex)
             {
-                LogError($"Strategy execution failed: {ex.Message}");
+                LogError($"❌ Strategy execution failed: {ex.Message}");
+                LogError($"   Stack trace: {ex.StackTrace}");
                 return false;
             }
         }

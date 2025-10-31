@@ -1665,6 +1665,13 @@ public partial class TaskChainRecorderForm : Form
         }
     }
 
+    private void btnPlayChain_Click(object? sender, EventArgs e)
+    {
+        // TaskChainPlayerForm'u aç
+        var playerForm = new TaskChainPlayerForm();
+        playerForm.ShowDialog();
+    }
+
     private void LoadChainToForm(TaskChain chain)
     {
         try
@@ -2362,7 +2369,8 @@ public partial class TaskChainRecorderForm : Form
         LogMessage("\n=== 🧪 AKILLI STRATEJİLERİ TEST EDİLİYOR ===");
 
         int successCount = 0;
-        foreach (var strategy in _smartStrategies)
+        // DÜZELTME: Collection was modified hatası için liste kopyası oluştur
+        foreach (var strategy in _smartStrategies.ToList())
         {
             try
             {

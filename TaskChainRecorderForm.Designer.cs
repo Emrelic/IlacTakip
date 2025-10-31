@@ -99,6 +99,7 @@ partial class TaskChainRecorderForm
         btnNextStep = new Button();
         btnSaveChain = new Button();
         btnLoadChain = new Button();
+        btnPlayChain = new Button();
         btnMakeLooped = new Button();
         btnClose = new Button();
 
@@ -582,6 +583,7 @@ partial class TaskChainRecorderForm
         pnlFooter.Padding = new Padding(10, 10, 10, 10);
         pnlFooter.Controls.Add(btnClose);
         pnlFooter.Controls.Add(btnLoadChain);
+        pnlFooter.Controls.Add(btnPlayChain);
         pnlFooter.Controls.Add(btnMakeLooped); // Döngüsel yap butonu
         pnlFooter.Controls.Add(btnSaveChain);
         pnlFooter.Controls.Add(btnNextStep);
@@ -640,13 +642,25 @@ partial class TaskChainRecorderForm
         btnLoadChain.Text = "📂 Düzenle";
         btnLoadChain.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
         btnLoadChain.Location = new Point(10, 96);
-        btnLoadChain.Size = new Size(135, 38);
+        btnLoadChain.Size = new Size(100, 38);
         btnLoadChain.BackColor = Color.FromArgb(30, 144, 255);
         btnLoadChain.ForeColor = Color.White;
         btnLoadChain.FlatStyle = FlatStyle.Flat;
         btnLoadChain.FlatAppearance.BorderSize = 0;
         btnLoadChain.Cursor = Cursors.Hand;
         btnLoadChain.Click += btnLoadChain_Click;
+
+        // btnPlayChain
+        btnPlayChain.Text = "▶️ Oynat";
+        btnPlayChain.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
+        btnPlayChain.Location = new Point(115, 96);
+        btnPlayChain.Size = new Size(100, 38);
+        btnPlayChain.BackColor = Color.FromArgb(40, 167, 69);
+        btnPlayChain.ForeColor = Color.White;
+        btnPlayChain.FlatStyle = FlatStyle.Flat;
+        btnPlayChain.FlatAppearance.BorderSize = 0;
+        btnPlayChain.Cursor = Cursors.Hand;
+        btnPlayChain.Click += btnPlayChain_Click;
 
         // btnClose
         btnClose.Text = "❌";
@@ -691,8 +705,8 @@ partial class TaskChainRecorderForm
         // btnMakeLooped - Footer panelinde görünür
         btnMakeLooped.Text = "🔄 Döngüsel";
         btnMakeLooped.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
-        btnMakeLooped.Location = new Point(155, 96);  // btnLoadChain'in yanında
-        btnMakeLooped.Size = new Size(235, 38);
+        btnMakeLooped.Location = new Point(220, 96);  // btnPlayChain'in yanında
+        btnMakeLooped.Size = new Size(170, 38);
         btnMakeLooped.BackColor = Color.FromArgb(255, 140, 0);
         btnMakeLooped.ForeColor = Color.White;
         btnMakeLooped.FlatStyle = FlatStyle.Flat;
@@ -956,6 +970,7 @@ partial class TaskChainRecorderForm
     private Button btnNextStep;
     private Button btnSaveChain;
     private Button btnLoadChain;
+    private Button btnPlayChain;
     private Button btnClose;
 
     // Döngüsel görev kontrolleri
