@@ -349,7 +349,9 @@ public enum LocatorType
     // Smart Element Recorder için yeni tipler
     TableRowIndex,                  // Tablo ID + Satır Index
     TextContent,                    // Hücre text içeriği
-    ClassAndName                    // ClassName + Name kombinasyonu
+    ClassAndName,                   // ClassName + Name kombinasyonu
+    ParentNameAndControlType,       // Parent.Name + ControlType kombinasyonu
+    ParentAutomationIdAndControlType // Parent.AutomationId + ControlType kombinasyonu
 }
 
 /// <summary>

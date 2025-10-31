@@ -163,10 +163,11 @@ namespace MedulaOtomasyon
                 // 3. Text içeriğine göre dene
                 if (TryClickByTextContent(element)) return true;
 
-                // 4. Son çare koordinat ile tıkla
-                if (TryClickByCoordinates(element)) return true;
+                // 4. YASAK: Koordinat kullanımı devre dışı!
+                // Koordinat asla kullanılmamalı - UI Automation özellikleri kullanılmalı
+                // if (TryClickByCoordinates(element)) return true;
 
-                LogError("❌ Element bulunamadı!");
+                LogError("❌ Element bulunamadı! (Koordinat kullanımı yasak - UI özelliklerini kontrol edin)");
                 return false;
             }
             catch (Exception ex)
@@ -1917,6 +1918,14 @@ namespace MedulaOtomasyon
 
         private bool TryClickByCoordinates(RecordedElement element)
         {
+            // KOORDİNAT KULLANIMI YASAK!
+            // Bu fonksiyon artık asla çağrılmamalı
+            // UI Automation özellikleri (AutomationId, Name, ClassName, ControlType, etc.) kullanılmalı
+
+            LogError("❌ HATA: Koordinat kullanımı yasak! UI Automation özellikleri kullanılmalı!");
+            return false;
+
+            /* DEVRE DIŞI - KOORDİNAT KULLANIMI YASAK!
             try
             {
                 int targetX = element.ScreenPoint.X;
@@ -1964,6 +1973,7 @@ namespace MedulaOtomasyon
                 LogWarning($"Coordinate click failed: {ex.Message}");
                 return false;
             }
+            */
         }
 
         private static double ToDoubleOrDefault(object? value, double defaultValue = double.NaN)
@@ -2865,19 +2875,75 @@ namespace MedulaOtomasyon
                 });
             }
 
-            // 8. Coordinates (fallback - en son çare)
-            strategies.Add(new ElementLocatorStrategy
+            // 8. AutomationId + ControlType (güçlü kombinasyon)
+            if (!string.IsNullOrEmpty(recordedElement.AutomationId) && !string.IsNullOrEmpty(recordedElement.ControlType))
             {
-                Name = "Coordinates",
-                Description = $"Screen position: ({recordedElement.ScreenPoint.X}, {recordedElement.ScreenPoint.Y})",
-                Type = LocatorType.Coordinates,
-                Properties = new Dictionary<string, string>
+                strategies.Add(new ElementLocatorStrategy
                 {
-                    ["X"] = recordedElement.ScreenPoint.X.ToString(),
-                    ["Y"] = recordedElement.ScreenPoint.Y.ToString()
-                },
-                RecordedElement = recordedElement
-            });
+                    Name = "AutomationId + ControlType",
+                    Description = $"AutomationId: {recordedElement.AutomationId}, Type: {recordedElement.ControlType}",
+                    Type = LocatorType.AutomationIdAndControlType,
+                    Properties = new Dictionary<string, string>
+                    {
+                        ["AutomationId"] = recordedElement.AutomationId,
+                        ["ControlType"] = recordedElement.ControlType
+                    },
+                    RecordedElement = recordedElement
+                });
+            }
+
+            // 9. ClassName (varsa)
+            if (!string.IsNullOrEmpty(recordedElement.ClassName))
+            {
+                strategies.Add(new ElementLocatorStrategy
+                {
+                    Name = "ClassName",
+                    Description = $"ClassName: {recordedElement.ClassName}",
+                    Type = LocatorType.ClassName,
+                    Properties = new Dictionary<string, string>
+                    {
+                        ["ClassName"] = recordedElement.ClassName
+                    },
+                    RecordedElement = recordedElement
+                });
+            }
+
+            // 10. Parent.Name + ControlType (parent bilgisi varsa)
+            if (!string.IsNullOrEmpty(recordedElement.ParentName) && !string.IsNullOrEmpty(recordedElement.ControlType))
+            {
+                strategies.Add(new ElementLocatorStrategy
+                {
+                    Name = "Parent.Name + ControlType",
+                    Description = $"Parent: {recordedElement.ParentName}, Type: {recordedElement.ControlType}",
+                    Type = LocatorType.ParentNameAndControlType,
+                    Properties = new Dictionary<string, string>
+                    {
+                        ["ParentName"] = recordedElement.ParentName,
+                        ["ControlType"] = recordedElement.ControlType
+                    },
+                    RecordedElement = recordedElement
+                });
+            }
+
+            // 11. Parent.AutomationId + ControlType (parent AutomationId varsa)
+            if (!string.IsNullOrEmpty(recordedElement.ParentAutomationId) && !string.IsNullOrEmpty(recordedElement.ControlType))
+            {
+                strategies.Add(new ElementLocatorStrategy
+                {
+                    Name = "Parent.AutomationId + ControlType",
+                    Description = $"Parent AutomationId: {recordedElement.ParentAutomationId}, Type: {recordedElement.ControlType}",
+                    Type = LocatorType.ParentAutomationIdAndControlType,
+                    Properties = new Dictionary<string, string>
+                    {
+                        ["ParentAutomationId"] = recordedElement.ParentAutomationId,
+                        ["ControlType"] = recordedElement.ControlType
+                    },
+                    RecordedElement = recordedElement
+                });
+            }
+
+            // KOORDİNAT YASAK! ASLA EKLENMEMELİ!
+            // Coordinates are NOT allowed - UI Automation properties must be used!
 
             return strategies;
         }
