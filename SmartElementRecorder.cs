@@ -2978,26 +2978,104 @@ namespace MedulaOtomasyon
         {
             try
             {
-                // DÜZELTME: Sadece element.click() kullan, koordinat tıklaması yapma!
+                // Element tag name'ini al
+                string tagName = "";
+                try { tagName = element.tagName?.ToString()?.ToUpper() ?? ""; }
+                catch { }
+
+                LogInfo($"[ClickHtmlElement] Element tagName: '{tagName}'");
+
+                // TR (table row) elementi ise özel işlem yap
+                if (tagName == "TR")
+                {
+                    LogInfo("[ClickHtmlElement] TR element detected - using special TR click strategy");
+
+                    // YÖNTEM 1: fireEvent ile onclick tetikle
+                    try
+                    {
+                        element.fireEvent("onclick");
+                        LogInfo("[ClickHtmlElement] ✅ TR clicked via fireEvent('onclick')");
+                        return;
+                    }
+                    catch (Exception ex1)
+                    {
+                        LogWarning($"[ClickHtmlElement] fireEvent failed: {ex1.Message}");
+                    }
+
+                    // YÖNTEM 2: İlk TD (cell) elementini bul ve ona tıkla
+                    try
+                    {
+                        dynamic cells = element.cells;
+                        if (cells != null && cells.length > 0)
+                        {
+                            dynamic firstCell = cells[0];
+                            firstCell.click();
+                            LogInfo("[ClickHtmlElement] ✅ TR clicked via first TD cell");
+                            return;
+                        }
+                    }
+                    catch (Exception ex2)
+                    {
+                        LogWarning($"[ClickHtmlElement] TD cell click failed: {ex2.Message}");
+                    }
+
+                    // YÖNTEM 3: getElementsByTagName ile ilk TD'yi bul
+                    try
+                    {
+                        dynamic tdElements = element.getElementsByTagName("TD");
+                        if (tdElements != null && tdElements.length > 0)
+                        {
+                            dynamic firstTd = tdElements[0];
+                            firstTd.click();
+                            LogInfo("[ClickHtmlElement] ✅ TR clicked via getElementsByTagName TD");
+                            return;
+                        }
+                    }
+                    catch (Exception ex3)
+                    {
+                        LogWarning($"[ClickHtmlElement] getElementsByTagName TD failed: {ex3.Message}");
+                    }
+
+                    // YÖNTEM 4: children[0] dene
+                    try
+                    {
+                        dynamic children = element.children;
+                        if (children != null && children.length > 0)
+                        {
+                            dynamic firstChild = children[0];
+                            firstChild.click();
+                            LogInfo("[ClickHtmlElement] ✅ TR clicked via first child");
+                            return;
+                        }
+                    }
+                    catch (Exception ex4)
+                    {
+                        LogWarning($"[ClickHtmlElement] First child click failed: {ex4.Message}");
+                    }
+
+                    LogError("[ClickHtmlElement] ❌ All TR click methods failed!");
+                    throw new Exception("TR element click failed - no method succeeded");
+                }
+
+                // Normal element (TR değil) - direkt click()
                 element.click();
-                LogInfo("Element.click() called - UI Automation click successful");
+                LogInfo($"[ClickHtmlElement] ✅ {tagName} clicked via element.click()");
             }
             catch (Exception ex)
             {
-                LogError($"ClickHtmlElement first attempt error: {ex.Message}");
+                LogError($"[ClickHtmlElement] First attempt error: {ex.Message}");
 
                 // Alternatif: Focus + element.click() tekrar dene
                 try
                 {
                     element.focus();
                     Thread.Sleep(100);
-                    // Tekrar dene
                     element.click();
-                    LogInfo("Element.click() called after focus - UI Automation click successful");
+                    LogInfo("[ClickHtmlElement] ✅ Clicked after focus");
                 }
                 catch (Exception ex2)
                 {
-                    LogError($"ClickHtmlElement second attempt error: {ex2.Message}");
+                    LogError($"[ClickHtmlElement] Focus attempt error: {ex2.Message}");
 
                     // Son çare: scrollIntoView + click
                     try
@@ -3005,17 +3083,15 @@ namespace MedulaOtomasyon
                         element.scrollIntoView(true);
                         Thread.Sleep(100);
                         element.click();
-                        LogInfo("Element.click() called after scrollIntoView - UI Automation click successful");
+                        LogInfo("[ClickHtmlElement] ✅ Clicked after scrollIntoView");
                     }
                     catch (Exception ex3)
                     {
-                        LogError($"ClickHtmlElement all attempts failed: {ex3.Message}");
+                        LogError($"[ClickHtmlElement] ❌ ALL ATTEMPTS FAILED: {ex3.Message}");
+                        throw;
                     }
                 }
             }
-
-            // KALDIRILAN: Koordinat bazlı tıklama kodu tamamen kaldırıldı
-            // Kullanıcının isteği üzerine: "koordinat tıklaması oynatma sırasında asla olmamalı"
         }
 
         private bool CellTextsMatch(List<string> actual, List<string> expected)
