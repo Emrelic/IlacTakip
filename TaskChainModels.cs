@@ -305,6 +305,11 @@ public class ConditionInfo
     /// False: Normal koşullu dallanma davranışı
     /// </summary>
     public bool IsLoopTerminationMode { get; set; } = false;
+
+    /// <summary>
+    /// Bir önceki adım numarası (dallanma önerisi için)
+    /// </summary>
+    public int PreviousStepNumber { get; set; } = 0;
 }
 
 /// <summary>

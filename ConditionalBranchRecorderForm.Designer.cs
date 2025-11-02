@@ -6,9 +6,14 @@ partial class ConditionalBranchRecorderForm
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing && (components != null))
+        if (disposing)
         {
-            components.Dispose();
+            _cancellationTokenSource?.Cancel();
+            _cancellationTokenSource?.Dispose();
+            if (components != null)
+            {
+                components.Dispose();
+            }
         }
         base.Dispose(disposing);
     }
@@ -78,16 +83,21 @@ partial class ConditionalBranchRecorderForm
         lblDefaultBranch = new Label();
         txtDefaultBranch = new TextBox();
 
+        // GroupBox for Element Properties
+        grpElementProperties = new GroupBox();
+        dgvElementProperties = new DataGridView();
+        lblSelectedElement = new Label();
+
         SuspendLayout();
 
         //
         // Form
         //
-        this.ClientSize = new Size(1200, 820);
+        this.ClientSize = new Size(1200, 850);
         this.Text = "Koşullu Dallanma Kaydedici (Tip 3)";
         this.StartPosition = FormStartPosition.CenterScreen;
         this.FormBorderStyle = FormBorderStyle.Sizable;
-        this.MinimumSize = new Size(1000, 720);
+        this.MinimumSize = new Size(1200, 850);
 
         //
         // lblTitle
@@ -194,7 +204,7 @@ partial class ConditionalBranchRecorderForm
         //
         grpConditions.Location = new Point(15, 130);
         grpConditions.Name = "grpConditions";
-        grpConditions.Size = new Size(1165, 300);
+        grpConditions.Size = new Size(750, 300);
         grpConditions.TabStop = false;
         grpConditions.Text = "Koşullar";
 
@@ -214,7 +224,7 @@ partial class ConditionalBranchRecorderForm
         //
         lstConditions.Location = new Point(10, 40);
         lstConditions.Name = "lstConditions";
-        lstConditions.Size = new Size(1145, 120);
+        lstConditions.Size = new Size(730, 120);
         lstConditions.Parent = grpConditions;
         lstConditions.SelectedIndexChanged += LstConditions_SelectedIndexChanged;
 
@@ -223,7 +233,7 @@ partial class ConditionalBranchRecorderForm
         //
         pnlConditionEntry.Location = new Point(10, 170);
         pnlConditionEntry.Name = "pnlConditionEntry";
-        pnlConditionEntry.Size = new Size(1145, 90);
+        pnlConditionEntry.Size = new Size(730, 90);
         pnlConditionEntry.BorderStyle = BorderStyle.FixedSingle;
         pnlConditionEntry.Parent = grpConditions;
 
@@ -358,9 +368,9 @@ partial class ConditionalBranchRecorderForm
         //
         // grpBranches
         //
-        grpBranches.Location = new Point(15, 450);
+        grpBranches.Location = new Point(15, 440);
         grpBranches.Name = "grpBranches";
-        grpBranches.Size = new Size(1165, 260);
+        grpBranches.Size = new Size(1165, 270);
         grpBranches.TabStop = false;
         grpBranches.Text = "Dallanma Hedefleri";
 
@@ -495,7 +505,7 @@ partial class ConditionalBranchRecorderForm
         // lblDefaultBranch
         //
         lblDefaultBranch.AutoSize = true;
-        lblDefaultBranch.Location = new Point(15, 725);
+        lblDefaultBranch.Location = new Point(15, 720);
         lblDefaultBranch.Name = "lblDefaultBranch";
         lblDefaultBranch.Size = new Size(250, 15);
         lblDefaultBranch.Text = "Varsayılan Dal (koşul sağlanmazsa):";
@@ -503,15 +513,63 @@ partial class ConditionalBranchRecorderForm
         //
         // txtDefaultBranch
         //
-        txtDefaultBranch.Location = new Point(270, 722);
+        txtDefaultBranch.Location = new Point(270, 717);
         txtDefaultBranch.Name = "txtDefaultBranch";
         txtDefaultBranch.Size = new Size(150, 23);
         txtDefaultBranch.PlaceholderText = "Adım ID";
 
         //
+        // grpElementProperties
+        //
+        grpElementProperties.Location = new Point(775, 130);
+        grpElementProperties.Name = "grpElementProperties";
+        grpElementProperties.Size = new Size(405, 300);
+        grpElementProperties.TabStop = false;
+        grpElementProperties.Text = "Seçili Element Özellikleri";
+
+        //
+        // lblSelectedElement
+        //
+        lblSelectedElement.AutoSize = true;
+        lblSelectedElement.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
+        lblSelectedElement.Location = new Point(10, 20);
+        lblSelectedElement.Name = "lblSelectedElement";
+        lblSelectedElement.Size = new Size(350, 15);
+        lblSelectedElement.Text = "Element seçilmedi. 'Element Seç' butonuna tıklayın.";
+        lblSelectedElement.Parent = grpElementProperties;
+        lblSelectedElement.ForeColor = System.Drawing.Color.Gray;
+
+        //
+        // dgvElementProperties
+        //
+        dgvElementProperties.Location = new Point(10, 45);
+        dgvElementProperties.Name = "dgvElementProperties";
+        dgvElementProperties.Size = new Size(385, 245);
+        dgvElementProperties.AllowUserToAddRows = false;
+        dgvElementProperties.AllowUserToDeleteRows = false;
+        dgvElementProperties.ReadOnly = true;
+        dgvElementProperties.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
+        dgvElementProperties.MultiSelect = false;
+        dgvElementProperties.RowHeadersVisible = false;
+        dgvElementProperties.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
+        dgvElementProperties.BackgroundColor = System.Drawing.Color.White;
+        dgvElementProperties.BorderStyle = BorderStyle.Fixed3D;
+        dgvElementProperties.Parent = grpElementProperties;
+
+        // DataGridView kolonları
+        dgvElementProperties.ColumnCount = 2;
+        dgvElementProperties.Columns[0].Name = "Özellik";
+        dgvElementProperties.Columns[0].FillWeight = 45;
+        dgvElementProperties.Columns[1].Name = "Değer";
+        dgvElementProperties.Columns[1].FillWeight = 55;
+
+        // Double click event
+        dgvElementProperties.CellDoubleClick += DgvElementProperties_CellDoubleClick;
+
+        //
         // btnSave
         //
-        btnSave.Location = new Point(900, 720);
+        btnSave.Location = new Point(900, 760);
         btnSave.Name = "btnSave";
         btnSave.Size = new Size(130, 35);
         btnSave.Text = "💾 Kaydet";
@@ -522,7 +580,7 @@ partial class ConditionalBranchRecorderForm
         //
         // btnCancel
         //
-        btnCancel.Location = new Point(1050, 720);
+        btnCancel.Location = new Point(1050, 760);
         btnCancel.Name = "btnCancel";
         btnCancel.Size = new Size(130, 35);
         btnCancel.Text = "❌ İptal";
@@ -541,6 +599,7 @@ partial class ConditionalBranchRecorderForm
         this.Controls.Add(chkLoopTerminationMode);
         this.Controls.Add(btnRefreshElements);
         this.Controls.Add(grpConditions);
+        this.Controls.Add(grpElementProperties);
         this.Controls.Add(grpBranches);
         this.Controls.Add(lblDefaultBranch);
         this.Controls.Add(txtDefaultBranch);
@@ -598,4 +657,9 @@ partial class ConditionalBranchRecorderForm
     private TextBox txtBranchDesc;
     private Label lblDefaultBranch;
     private TextBox txtDefaultBranch;
+
+    // Element Properties Panel
+    private GroupBox grpElementProperties;
+    private DataGridView dgvElementProperties;
+    private Label lblSelectedElement;
 }

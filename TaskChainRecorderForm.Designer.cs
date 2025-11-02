@@ -100,6 +100,7 @@ partial class TaskChainRecorderForm
         btnSaveChain = new Button();
         btnLoadChain = new Button();
         btnPlayChain = new Button();
+        btnTaskMap = new Button();
         btnMakeLooped = new Button();
         btnClose = new Button();
 
@@ -272,6 +273,7 @@ partial class TaskChainRecorderForm
         tabUIElement.Controls.Add(lblDoubleClickDelay);
         tabUIElement.Controls.Add(numScrollAmount);
         tabUIElement.Controls.Add(lblScrollAmount);
+        tabUIElement.Controls.Add(btnSelectKeys);
         tabUIElement.Controls.Add(txtKeysToPress);
         tabUIElement.Controls.Add(lblKeysToPress);
         tabUIElement.Controls.Add(cmbActionType);
@@ -353,9 +355,23 @@ partial class TaskChainRecorderForm
         // txtKeysToPress
         txtKeysToPress.Font = new Font("Segoe UI", 10F);
         txtKeysToPress.Location = new Point(15, 320);
-        txtKeysToPress.Size = new Size(430, 30);
+        txtKeysToPress.Size = new Size(330, 30);
         txtKeysToPress.PlaceholderText = "{ENTER}";
         txtKeysToPress.Visible = false;
+
+        // btnSelectKeys
+        btnSelectKeys = new Button();
+        btnSelectKeys.Text = "⌨️";
+        btnSelectKeys.Font = new Font("Segoe UI", 12F, FontStyle.Bold);
+        btnSelectKeys.Location = new Point(350, 318);
+        btnSelectKeys.Size = new Size(95, 34);
+        btnSelectKeys.BackColor = Color.FromArgb(106, 90, 205);
+        btnSelectKeys.ForeColor = Color.White;
+        btnSelectKeys.FlatStyle = FlatStyle.Flat;
+        btnSelectKeys.FlatAppearance.BorderSize = 0;
+        btnSelectKeys.Cursor = Cursors.Hand;
+        btnSelectKeys.Visible = false;
+        btnSelectKeys.Click += btnSelectKeys_Click;
 
         // lblScrollAmount
         lblScrollAmount.Text = "Scroll Miktarı (adım sayısı):";
@@ -578,23 +594,25 @@ partial class TaskChainRecorderForm
         // FOOTER PANEL
         // ==========================================
         pnlFooter.Dock = DockStyle.Bottom;
-        pnlFooter.Height = 150;
+        pnlFooter.Height = 160;
         pnlFooter.BackColor = Color.FromArgb(240, 240, 240);
         pnlFooter.Padding = new Padding(10, 10, 10, 10);
         pnlFooter.Controls.Add(btnClose);
         pnlFooter.Controls.Add(btnLoadChain);
         pnlFooter.Controls.Add(btnPlayChain);
+        pnlFooter.Controls.Add(btnTaskMap);
         pnlFooter.Controls.Add(btnMakeLooped); // Döngüsel yap butonu
         pnlFooter.Controls.Add(btnSaveChain);
         pnlFooter.Controls.Add(btnNextStep);
         pnlFooter.Controls.Add(btnTestStep);
         pnlFooter.Controls.Add(btnSaveStep);
 
+        // ===== SATIR 1: ADIM İŞLEMLERİ =====
         // btnSaveStep
-        btnSaveStep.Text = "💾 Kaydet";
-        btnSaveStep.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
+        btnSaveStep.Text = "💾 Adım Kaydet";
+        btnSaveStep.Font = new Font("Segoe UI", 9.5F, FontStyle.Bold);
         btnSaveStep.Location = new Point(10, 10);
-        btnSaveStep.Size = new Size(225, 38);
+        btnSaveStep.Size = new Size(160, 38);
         btnSaveStep.BackColor = Color.FromArgb(0, 120, 212);
         btnSaveStep.ForeColor = Color.White;
         btnSaveStep.FlatStyle = FlatStyle.Flat;
@@ -603,10 +621,10 @@ partial class TaskChainRecorderForm
         btnSaveStep.Click += btnSaveStep_Click;
 
         // btnTestStep
-        btnTestStep.Text = "🧪 Test";
-        btnTestStep.Font = new Font("Segoe UI", 10F);
-        btnTestStep.Location = new Point(245, 10);
-        btnTestStep.Size = new Size(225, 38);
+        btnTestStep.Text = "🧪 Test Et";
+        btnTestStep.Font = new Font("Segoe UI", 9.5F);
+        btnTestStep.Location = new Point(180, 10);
+        btnTestStep.Size = new Size(160, 38);
         btnTestStep.BackColor = Color.FromArgb(218, 165, 32);
         btnTestStep.ForeColor = Color.White;
         btnTestStep.FlatStyle = FlatStyle.Flat;
@@ -616,9 +634,9 @@ partial class TaskChainRecorderForm
 
         // btnNextStep
         btnNextStep.Text = "➡️ Sonraki";
-        btnNextStep.Font = new Font("Segoe UI", 10F);
-        btnNextStep.Location = new Point(10, 53);
-        btnNextStep.Size = new Size(145, 38);
+        btnNextStep.Font = new Font("Segoe UI", 9.5F);
+        btnNextStep.Location = new Point(350, 10);
+        btnNextStep.Size = new Size(120, 38);
         btnNextStep.BackColor = Color.FromArgb(106, 90, 205);
         btnNextStep.ForeColor = Color.White;
         btnNextStep.FlatStyle = FlatStyle.Flat;
@@ -626,11 +644,12 @@ partial class TaskChainRecorderForm
         btnNextStep.Cursor = Cursors.Hand;
         btnNextStep.Click += btnNextStep_Click;
 
+        // ===== SATIR 2: ZİNCİR İŞLEMLERİ =====
         // btnSaveChain
-        btnSaveChain.Text = "💾 Zinciri Kaydet";
-        btnSaveChain.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
-        btnSaveChain.Location = new Point(165, 53);
-        btnSaveChain.Size = new Size(220, 38);
+        btnSaveChain.Text = "💾 Zincir Kaydet";
+        btnSaveChain.Font = new Font("Segoe UI", 9.5F, FontStyle.Bold);
+        btnSaveChain.Location = new Point(10, 56);
+        btnSaveChain.Size = new Size(180, 38);
         btnSaveChain.BackColor = Color.FromArgb(16, 124, 16);
         btnSaveChain.ForeColor = Color.White;
         btnSaveChain.FlatStyle = FlatStyle.Flat;
@@ -640,9 +659,9 @@ partial class TaskChainRecorderForm
 
         // btnLoadChain
         btnLoadChain.Text = "📂 Düzenle";
-        btnLoadChain.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
-        btnLoadChain.Location = new Point(10, 96);
-        btnLoadChain.Size = new Size(100, 38);
+        btnLoadChain.Font = new Font("Segoe UI", 9.5F, FontStyle.Bold);
+        btnLoadChain.Location = new Point(200, 56);
+        btnLoadChain.Size = new Size(120, 38);
         btnLoadChain.BackColor = Color.FromArgb(30, 144, 255);
         btnLoadChain.ForeColor = Color.White;
         btnLoadChain.FlatStyle = FlatStyle.Flat;
@@ -652,9 +671,9 @@ partial class TaskChainRecorderForm
 
         // btnPlayChain
         btnPlayChain.Text = "▶️ Oynat";
-        btnPlayChain.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
-        btnPlayChain.Location = new Point(115, 96);
-        btnPlayChain.Size = new Size(100, 38);
+        btnPlayChain.Font = new Font("Segoe UI", 9.5F, FontStyle.Bold);
+        btnPlayChain.Location = new Point(330, 56);
+        btnPlayChain.Size = new Size(140, 38);
         btnPlayChain.BackColor = Color.FromArgb(40, 167, 69);
         btnPlayChain.ForeColor = Color.White;
         btnPlayChain.FlatStyle = FlatStyle.Flat;
@@ -662,11 +681,24 @@ partial class TaskChainRecorderForm
         btnPlayChain.Cursor = Cursors.Hand;
         btnPlayChain.Click += btnPlayChain_Click;
 
+        // ===== SATIR 3: GÖRÜNÜM VE ARAÇLAR =====
+        // btnTaskMap
+        btnTaskMap.Text = "🗺️ Harita";
+        btnTaskMap.Font = new Font("Segoe UI", 9.5F, FontStyle.Bold);
+        btnTaskMap.Location = new Point(10, 102);
+        btnTaskMap.Size = new Size(130, 38);
+        btnTaskMap.BackColor = Color.FromArgb(23, 162, 184);
+        btnTaskMap.ForeColor = Color.White;
+        btnTaskMap.FlatStyle = FlatStyle.Flat;
+        btnTaskMap.FlatAppearance.BorderSize = 0;
+        btnTaskMap.Cursor = Cursors.Hand;
+        btnTaskMap.Click += btnTaskMap_Click;
+
         // btnClose
-        btnClose.Text = "❌";
-        btnClose.Font = new Font("Segoe UI", 10F);
-        btnClose.Location = new Point(400, 96);
-        btnClose.Size = new Size(65, 38);
+        btnClose.Text = "❌ Kapat";
+        btnClose.Font = new Font("Segoe UI", 9.5F);
+        btnClose.Location = new Point(390, 102);
+        btnClose.Size = new Size(80, 38);
         btnClose.BackColor = Color.FromArgb(180, 180, 180);
         btnClose.ForeColor = Color.White;
         btnClose.FlatStyle = FlatStyle.Flat;
@@ -702,11 +734,11 @@ partial class TaskChainRecorderForm
         // btnMakeLooped artık Footer panelinde olacak
         pnlLoopSettings.Visible = false; // Başlangıçta gizli
 
-        // btnMakeLooped - Footer panelinde görünür
+        // btnMakeLooped - Footer panelinde görünür (3. satır)
         btnMakeLooped.Text = "🔄 Döngüsel";
-        btnMakeLooped.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
-        btnMakeLooped.Location = new Point(220, 96);  // btnPlayChain'in yanında
-        btnMakeLooped.Size = new Size(170, 38);
+        btnMakeLooped.Font = new Font("Segoe UI", 9.5F, FontStyle.Bold);
+        btnMakeLooped.Location = new Point(150, 102);
+        btnMakeLooped.Size = new Size(150, 38);
         btnMakeLooped.BackColor = Color.FromArgb(255, 140, 0);
         btnMakeLooped.ForeColor = Color.White;
         btnMakeLooped.FlatStyle = FlatStyle.Flat;
@@ -939,6 +971,7 @@ partial class TaskChainRecorderForm
     private ComboBox cmbActionType;
     private Label lblKeysToPress;
     private TextBox txtKeysToPress;
+    private Button btnSelectKeys;
     private Label lblScrollAmount;
     private NumericUpDown numScrollAmount;
     private Label lblDoubleClickDelay;
@@ -971,6 +1004,7 @@ partial class TaskChainRecorderForm
     private Button btnSaveChain;
     private Button btnLoadChain;
     private Button btnPlayChain;
+    private Button btnTaskMap;
     private Button btnClose;
 
     // Döngüsel görev kontrolleri

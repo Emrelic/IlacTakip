@@ -1367,6 +1367,7 @@ public partial class TaskChainRecorderForm : Form
         // Tüm dinamik kontrolleri gizle
         lblKeysToPress.Visible = false;
         txtKeysToPress.Visible = false;
+        btnSelectKeys.Visible = false;
         lblScrollAmount.Visible = false;
         numScrollAmount.Visible = false;
         lblDoubleClickDelay.Visible = false;
@@ -1389,6 +1390,7 @@ public partial class TaskChainRecorderForm : Form
             case 4: // Klavye Tuşları
                 lblKeysToPress.Visible = true;
                 txtKeysToPress.Visible = true;
+                btnSelectKeys.Visible = true;
                 lblKeysToPress.Text = "Klavye Tuşları:";
                 txtKeysToPress.PlaceholderText = "Örn: {ENTER}, {TAB}, ^c (Ctrl+C), %(F4) (Alt+F4)...";
                 break;
@@ -1396,6 +1398,7 @@ public partial class TaskChainRecorderForm : Form
             case 5: // Metin Yaz
                 lblKeysToPress.Visible = true;
                 txtKeysToPress.Visible = true;
+                btnSelectKeys.Visible = true;
                 lblKeysToPress.Text = "Yazılacak Metin:";
                 txtKeysToPress.PlaceholderText = "Yazılacak metni girin...";
                 break;
@@ -1667,9 +1670,91 @@ public partial class TaskChainRecorderForm : Form
 
     private void btnPlayChain_Click(object? sender, EventArgs e)
     {
-        // TaskChainPlayerForm'u aç
-        var playerForm = new TaskChainPlayerForm();
-        playerForm.ShowDialog();
+        try
+        {
+            // Recorder formunu gizle (TopMost olduğu için tıklamaları engellemesini önle)
+            this.Hide();
+
+            // TaskChainPlayerForm'u aç
+            var playerForm = new TaskChainPlayerForm();
+            playerForm.ShowDialog();
+        }
+        finally
+        {
+            // Player kapatıldığında recorder formunu tekrar göster
+            this.Show();
+            this.BringToFront();
+        }
+    }
+
+    private void btnTaskMap_Click(object? sender, EventArgs e)
+    {
+        try
+        {
+            // Görev haritasını göster
+            var mapForm = new TaskChainMapForm(_currentChain);
+
+            // Event handler'ları bağla
+            mapForm.InsertStepRequested += (s, stepIndex) =>
+            {
+                // Belirli bir index'e görev ekle
+                MessageBox.Show($"Adım {stepIndex + 1}'in önüne görev ekleme özelliği yakında eklenecek!",
+                    "Bilgi", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            };
+
+            mapForm.EditStepRequested += (s, stepIndex) =>
+            {
+                // Belirli bir görevi düzenle
+                if (stepIndex >= 0 && stepIndex < _currentChain.Steps.Count)
+                {
+                    var step = _currentChain.Steps[stepIndex];
+                    MessageBox.Show($"Adım {step.StepNumber} düzenleme özelliği yakında eklenecek!",
+                        "Bilgi", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+            };
+
+            mapForm.DeleteStepRequested += (s, stepIndex) =>
+            {
+                // Belirli bir görevi sil
+                if (stepIndex >= 0 && stepIndex < _currentChain.Steps.Count)
+                {
+                    var step = _currentChain.Steps[stepIndex];
+                    var result = MessageBox.Show($"Adım {step.StepNumber} silinsin mi?",
+                        "Onay", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+
+                    if (result == DialogResult.Yes)
+                    {
+                        _currentChain.Steps.RemoveAt(stepIndex);
+                        UpdateTaskChainViewer();
+                        mapForm.Close(); // Haritayı kapat, yeniden açılacak
+                        LogMessage($"Adım {step.StepNumber} silindi.");
+                    }
+                }
+            };
+
+            mapForm.ShowDialog();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Görev haritası gösterilirken hata oluştu:\n{ex.Message}",
+                "Hata", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private void btnSelectKeys_Click(object? sender, EventArgs e)
+    {
+        // Mevcut tuşları dialog'a gönder
+        var currentKeys = txtKeysToPress.Text;
+
+        using (var dialog = new KeyboardInputDialog(currentKeys))
+        {
+            if (dialog.ShowDialog() == DialogResult.OK)
+            {
+                // Seçilen tuşları textbox'a yaz
+                txtKeysToPress.Text = dialog.KeySequence;
+                LogMessage($"Klavye tuşları seçildi: {dialog.KeySequence}");
+            }
+        }
     }
 
     private void LoadChainToForm(TaskChain chain)
@@ -3359,7 +3444,7 @@ public partial class TaskChainRecorderForm : Form
     {
         try
         {
-            using var form = new ConditionalBranchRecorderForm();
+            using var form = new ConditionalBranchWizard(_currentStepNumber);
 
             if (form.ShowDialog(this) == DialogResult.OK && form.Result != null)
             {

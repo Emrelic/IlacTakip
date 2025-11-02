@@ -268,8 +268,22 @@ public partial class TaskChainPlayerForm : Form
     {
         try
         {
+            // Player formunu gizle (RecorderForm TopMost olduğu için önce gizle)
+            this.Hide();
+
             var recorderForm = new TaskChainRecorderForm();
             recorderForm.LoadChainForEditing(chain, currentStepIndex);
+
+            // RecorderForm kapandığında player'ı tekrar göstermek için event handler ekle
+            recorderForm.FormClosed += (s, e) =>
+            {
+                if (!this.IsDisposed)
+                {
+                    this.Show();
+                    this.BringToFront();
+                }
+            };
+
             recorderForm.Show();
 
             Log($"✏️ Görev zinciri düzenleme için açıldı: {chain.Name}");
