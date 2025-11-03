@@ -17,6 +17,7 @@ namespace MedulaOtomasyon
 
         private void InitializeComponent()
         {
+            btnTopmost = new Button();
             grpChainList = new GroupBox();
             lstChains = new ListBox();
             btnRefresh = new Button();
@@ -56,6 +57,17 @@ namespace MedulaOtomasyon
             grpProgress.SuspendLayout();
             grpLog.SuspendLayout();
             SuspendLayout();
+            //
+            // btnTopmost
+            //
+            btnTopmost.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
+            btnTopmost.Location = new Point(332, 12);
+            btnTopmost.Name = "btnTopmost";
+            btnTopmost.Size = new Size(130, 30);
+            btnTopmost.TabIndex = 8;
+            btnTopmost.Text = "📌 En Üstte Tut";
+            btnTopmost.UseVisualStyleBackColor = true;
+            btnTopmost.Click += btnTopmost_Click;
             //
             // grpChainList
             //
@@ -413,6 +425,7 @@ namespace MedulaOtomasyon
             AutoScaleMode = AutoScaleMode.Font;
             AutoScroll = true;
             ClientSize = new Size(490, 1060);
+            Controls.Add(btnTopmost);
             Controls.Add(grpLog);
             Controls.Add(grpProgress);
             Controls.Add(grpOptions);
@@ -446,6 +459,7 @@ namespace MedulaOtomasyon
 
         #endregion
 
+        private Button btnTopmost;
         private GroupBox grpChainList;
         private ListBox lstChains;
         private Button btnRefresh;

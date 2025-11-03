@@ -21,8 +21,8 @@ partial class TaskChainRecorderForm
 
         // Header
         pnlHeader = new Panel();
-        lblTitle = new Label();
-        lblCurrentStep = new Label();
+        btnTopmost = new Button();
+        pnlRoadmap = new Panel();
 
         // Task Chain Viewer (sağ panel)
         pnlTaskChainViewer = new Panel();
@@ -120,27 +120,29 @@ partial class TaskChainRecorderForm
         // HEADER PANEL
         // ==========================================
         pnlHeader.Dock = DockStyle.Top;
-        pnlHeader.Height = 90;
+        pnlHeader.Height = 140;
         pnlHeader.BackColor = Color.FromArgb(45, 45, 48);
         pnlHeader.Padding = new Padding(10, 5, 10, 5);
-        pnlHeader.Controls.Add(lblCurrentStep);
-        pnlHeader.Controls.Add(lblTitle);
+        pnlHeader.Controls.Add(pnlRoadmap);
+        pnlHeader.Controls.Add(btnTopmost);
 
-        // lblTitle
-        lblTitle.Text = "📌 Görev Kaydedici";
-        lblTitle.Font = new Font("Segoe UI", 12F, FontStyle.Bold);
-        lblTitle.ForeColor = Color.White;
-        lblTitle.Location = new Point(10, 10);
-        lblTitle.Size = new Size(460, 25);
-        lblTitle.TextAlign = ContentAlignment.MiddleCenter;
+        // btnTopmost
+        btnTopmost.Text = "📌 En Üstte Tut";
+        btnTopmost.Font = new Font("Segoe UI", 8F, FontStyle.Bold);
+        btnTopmost.Location = new Point(350, 5);
+        btnTopmost.Size = new Size(115, 25);
+        btnTopmost.BackColor = SystemColors.Control;
+        btnTopmost.FlatStyle = FlatStyle.Flat;
+        btnTopmost.FlatAppearance.BorderSize = 1;
+        btnTopmost.FlatAppearance.BorderColor = Color.Gray;
+        btnTopmost.Cursor = Cursors.Hand;
+        btnTopmost.Click += btnTopmost_Click;
 
-        // lblCurrentStep
-        lblCurrentStep.Text = "Adım: 1";
-        lblCurrentStep.Font = new Font("Segoe UI", 22F, FontStyle.Bold);
-        lblCurrentStep.ForeColor = Color.FromArgb(100, 200, 255);
-        lblCurrentStep.Location = new Point(10, 45);
-        lblCurrentStep.Size = new Size(460, 40);
-        lblCurrentStep.TextAlign = ContentAlignment.MiddleCenter;
+        // pnlRoadmap - Mini yol haritası
+        pnlRoadmap.Location = new Point(10, 10);
+        pnlRoadmap.Size = new Size(460, 120);
+        pnlRoadmap.BackColor = Color.FromArgb(35, 35, 38);
+        pnlRoadmap.Paint += pnlRoadmap_Paint;
 
         // ==========================================
         // TAB CONTROL
@@ -923,6 +925,9 @@ partial class TaskChainRecorderForm
         StartPosition = FormStartPosition.Manual;
         Text = "Görev Kaydedici";
 
+        // Mouse events for roadmap
+        pnlRoadmap.MouseClick += pnlRoadmap_MouseClick;
+
         pnlHeader.ResumeLayout(false);
         pnlHeader.PerformLayout();
         pnlTaskChainViewer.ResumeLayout(false);
@@ -942,8 +947,8 @@ partial class TaskChainRecorderForm
     #endregion
 
     private Panel pnlHeader;
-    private Label lblTitle;
-    private Label lblCurrentStep;
+    private Button btnTopmost;
+    private Panel pnlRoadmap;
 
     private TabControl tabControl;
     private TabPage tabBasicInfo;

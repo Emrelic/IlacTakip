@@ -33,10 +33,13 @@ public partial class TaskChainRecorderForm : Form
     private ElementLocatorStrategy? _selectedSmartStrategy = null;
     private readonly string _medulaHtmlPath = Path.Combine(AppContext.BaseDirectory, "medula sayfası kaynak kodları.txt");
 
+    // Roadmap için
+    private List<RoadmapStepBox> _roadmapBoxes = new();
+    private string _currentBranch = ""; // "4A", "4B" gibi - şu an hangi dalda çalışıyoruz
+
     public TaskChainRecorderForm()
     {
         InitializeComponent();
-        this.TopMost = true; // Her zaman en üstte tut
         _database = new TaskChainDatabase();
         _currentChain = new TaskChain
         {
@@ -94,14 +97,6 @@ public partial class TaskChainRecorderForm : Form
             var step = chain.Steps[highlightStepIndex];
             LogMessage($"⚠️ Dikkat: Adım {step.StepNumber} çalışırken hata verdi veya durduruldu.");
             LogMessage($"   Bu adımı düzenlemek için 'Düzenle' butonunu kullanın.");
-
-            // Form başlığını değiştir
-            lblTitle.Text = $"Görev Zinciri Düzenleyici - {chain.Name}";
-            lblTitle.ForeColor = Color.FromArgb(255, 140, 0);
-        }
-        else
-        {
-            lblTitle.Text = $"Görev Zinciri Düzenleyici - {chain.Name}";
         }
 
         LogMessage($"✅ Zincir yüklendi: {chain.Steps.Count} adım");
@@ -111,7 +106,7 @@ public partial class TaskChainRecorderForm : Form
 
     private void UpdateStepNumberLabel()
     {
-        lblCurrentStep.Text = $"Adım: {_currentStepNumber}";
+        UpdateRoadmap();
     }
 
     private void LogMessage(string message)
@@ -1789,7 +1784,7 @@ public partial class TaskChainRecorderForm : Form
             if (_currentChain.Steps.Count > 0)
             {
                 _currentStepNumber = _currentChain.Steps.Count + 1;
-                lblCurrentStep.Text = $"Adım: {_currentStepNumber}";
+                UpdateRoadmap();
             }
 
             LogMessage("✓ Görev zinciri yüklendi: " + chain.Name);
@@ -2681,13 +2676,19 @@ public partial class TaskChainRecorderForm : Form
         else
         {
             // Her adım için S (Sayfa) ve G (Görev) satırlarını oluştur
-            foreach (var step in _currentChain.Steps.OrderBy(s => s.StepNumber))
+            // StepNumber ve StepId'ye göre sırala
+            var sortedSteps = _currentChain.Steps
+                .OrderBy(s => s.StepNumber)
+                .ThenBy(s => s.StepId ?? s.StepNumber.ToString());
+
+            foreach (var step in sortedSteps)
             {
-                int stepNum = step.StepNumber;
+                string stepId = !string.IsNullOrEmpty(step.StepId) ? step.StepId : step.StepNumber.ToString();
+                string indent = stepId.Length > step.StepNumber.ToString().Length ? "  ↳ " : "";
 
                 // S satırı - Hangi sayfadayız
                 string pageName = GetPageName(step);
-                sb.AppendLine($"S{stepNum} | {pageName}");
+                sb.AppendLine($"{indent}S{stepId} | {pageName}");
 
                 // G satırı - Ne yapıyoruz
                 if (step.StepType == StepType.UIElementAction ||
@@ -2697,16 +2698,33 @@ public partial class TaskChainRecorderForm : Form
                     string taskDesc = GetTaskDescription(step);
                     string technology = GetTechnologyInfo(step);
 
-                    sb.AppendLine($"G{stepNum} | {elementName} | {taskDesc} | {technology}");
+                    // Placeholder adımları farklı göster
+                    if (step.Description?.Contains("🔀 Dal:") == true)
+                    {
+                        sb.AppendLine($"{indent}G{stepId} | {step.Description} | [Yapılandırılacak]");
+                    }
+                    else
+                    {
+                        sb.AppendLine($"{indent}G{stepId} | {elementName} | {taskDesc} | {technology}");
+                    }
                 }
                 else if (step.StepType == StepType.ConditionalBranch)
                 {
-                    sb.AppendLine($"G{stepNum} | Koşul Kontrolü | Dallanma | Tip3");
+                    sb.AppendLine($"{indent}G{stepId} | Koşul Kontrolü | Dallanma | Tip3");
+
+                    // Dalları göster
+                    if (step.Condition != null && step.Condition.Branches.Count > 0)
+                    {
+                        foreach (var branch in step.Condition.Branches)
+                        {
+                            sb.AppendLine($"{indent}   ↗ {branch.TargetStepId}: {branch.BranchName} - {branch.Description}");
+                        }
+                    }
                 }
                 else if (step.StepType == StepType.LoopOrEnd)
                 {
                     string loopDesc = step.IsChainEnd ? "Zincir Bitir" : $"Döngü→{step.LoopBackToStepId}";
-                    sb.AppendLine($"G{stepNum} | Döngü/Bitiş | {loopDesc} | Tip4");
+                    sb.AppendLine($"{indent}G{stepId} | Döngü/Bitiş | {loopDesc} | Tip4");
                 }
 
                 sb.AppendLine(); // Boş satır (okunabilirlik için)
@@ -3212,8 +3230,7 @@ public partial class TaskChainRecorderForm : Form
 
             // Form durumunu güncelle
             _currentStepNumber = _currentStep.StepNumber;
-            lblCurrentStep.Text = $"Adım: {_currentStep.StepNumber}";
-            lblCurrentStep.ForeColor = Color.FromArgb(100, 200, 255);
+            UpdateRoadmap();
             cmbStepType.SelectedIndex = 1; // Varsayılan olarak UI element seçimi
 
             // Zincir görünümünü güncelle
@@ -3240,10 +3257,8 @@ public partial class TaskChainRecorderForm : Form
 
         LogMessage($"📝 Adım {step.StepNumber} düzenleme için yükleniyor...");
 
-        // Header'ı güncelle
-        lblTitle.Text = $"Görev Zinciri Kaydedici - Adım {step.StepNumber} Düzenleniyor";
-        lblCurrentStep.Text = $"Düzenleme Modu: Adım {step.StepNumber}";
-        lblCurrentStep.ForeColor = Color.FromArgb(255, 165, 0); // Turuncu renk
+        // Roadmap güncelle
+        UpdateRoadmap();
 
         // Buton metnini değiştir
         btnSaveStep.Text = "💾 Değişiklikleri Kaydet";
@@ -3383,10 +3398,8 @@ public partial class TaskChainRecorderForm : Form
         _isEditingMode = false;
         _stepBeingEdited = null;
 
-        // Header'ı sıfırla
-        lblTitle.Text = "Görev Zinciri Kaydedici";
-        lblCurrentStep.Text = $"Adım: {_currentStepNumber}";
-        lblCurrentStep.ForeColor = Color.FromArgb(100, 200, 255);
+        // Roadmap sıfırla
+        UpdateRoadmap();
 
         // Buton metnini sıfırla
         btnSaveStep.Text = "💾 Adımı Kaydet";
@@ -3450,6 +3463,7 @@ public partial class TaskChainRecorderForm : Form
             {
                 // Koşul bilgisini mevcut adıma kaydet
                 _currentStep.Condition = form.Result;
+                _currentStep.StepId = _currentStepNumber.ToString(); // StepId ayarla
                 _currentStep.Description = $"Koşullu Dallanma: {form.Result.PageIdentifier ?? "Sayfa kontrolü"}";
 
                 LogMessage($"✓ Koşullu dallanma kaydedildi:");
@@ -3459,6 +3473,16 @@ public partial class TaskChainRecorderForm : Form
 
                 // Adımı otomatik kaydet
                 btnSaveStep_Click(null, EventArgs.Empty);
+
+                // Dalları Steps listesine placeholder olarak ekle
+                CreateBranchPlaceholders(form.Result);
+
+                // Roadmap'i güncelle
+                UpdateRoadmap();
+                UpdateTaskChainViewer();
+
+                // Hangi dalı devam ettirmek istediğini sor
+                AskUserForBranchSelection(form.Result);
             }
             else
             {
@@ -3475,5 +3499,477 @@ public partial class TaskChainRecorderForm : Form
         }
     }
 
+    /// <summary>
+    /// Dallar için placeholder adımlar oluştur
+    /// </summary>
+    private void CreateBranchPlaceholders(ConditionInfo condition)
+    {
+        foreach (var branch in condition.Branches)
+        {
+            if (!string.IsNullOrEmpty(branch.TargetStepId))
+            {
+                // Bu dal için adım var mı kontrol et
+                var existingStep = _currentChain.Steps.FirstOrDefault(s => s.StepId == branch.TargetStepId);
+
+                if (existingStep == null)
+                {
+                    // Placeholder adım oluştur (henüz yapılandırılmamış)
+                    var placeholderStep = new TaskStep
+                    {
+                        StepId = branch.TargetStepId,
+                        StepNumber = ParseStepNumber(branch.TargetStepId),
+                        Description = $"🔀 Dal: {branch.BranchName} ({branch.Description ?? "Yapılandırılacak"})",
+                        StepType = StepType.UIElementAction
+                    };
+
+                    _currentChain.Steps.Add(placeholderStep);
+                    LogMessage($"  ➜ Dal placeholder oluşturuldu: {branch.TargetStepId} - {branch.BranchName}");
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Kullanıcıya hangi dalı devam ettirmek istediğini sor
+    /// </summary>
+    private void AskUserForBranchSelection(ConditionInfo condition)
+    {
+        if (condition.Branches.Count == 0)
+            return;
+
+        // Dialog oluştur
+        using var dialog = new Form
+        {
+            Text = "Dal Seçimi",
+            Size = new Size(450, 300),
+            StartPosition = FormStartPosition.CenterParent,
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            MaximizeBox = false,
+            MinimizeBox = false
+        };
+
+        var lblTitle = new Label
+        {
+            Text = "Hangi dalı devam ettirmek istersiniz?",
+            Font = new Font("Segoe UI", 11, FontStyle.Bold),
+            Location = new Point(20, 20),
+            Size = new Size(400, 25)
+        };
+
+        var lstBranches = new ListBox
+        {
+            Location = new Point(20, 55),
+            Size = new Size(400, 120),
+            Font = new Font("Segoe UI", 10)
+        };
+
+        // Dalları listeye ekle
+        foreach (var branch in condition.Branches)
+        {
+            string displayText = $"{branch.TargetStepId} - {branch.BranchName}: {branch.Description ?? "Yapılandırılacak"}";
+            lstBranches.Items.Add(new { Branch = branch, DisplayText = displayText });
+            lstBranches.DisplayMember = "DisplayText";
+        }
+
+        if (lstBranches.Items.Count > 0)
+            lstBranches.SelectedIndex = 0;
+
+        var btnOK = new Button
+        {
+            Text = "Devam Et",
+            Location = new Point(170, 190),
+            Size = new Size(120, 35),
+            DialogResult = DialogResult.OK,
+            BackColor = Color.FromArgb(0, 120, 212),
+            ForeColor = Color.White,
+            FlatStyle = FlatStyle.Flat
+        };
+
+        var btnCancel = new Button
+        {
+            Text = "İptal",
+            Location = new Point(300, 190),
+            Size = new Size(120, 35),
+            DialogResult = DialogResult.Cancel
+        };
+
+        dialog.Controls.AddRange(new Control[] { lblTitle, lstBranches, btnOK, btnCancel });
+        dialog.AcceptButton = btnOK;
+        dialog.CancelButton = btnCancel;
+
+        if (dialog.ShowDialog(this) == DialogResult.OK && lstBranches.SelectedItem != null)
+        {
+            dynamic selectedItem = lstBranches.SelectedItem;
+            BranchTarget selectedBranch = selectedItem.Branch;
+
+            // Seçilen dala geç
+            _currentStepNumber = ParseStepNumber(selectedBranch.TargetStepId);
+            _currentBranch = selectedBranch.TargetStepId.Replace(_currentStepNumber.ToString(), "");
+
+            LogMessage($"📍 {selectedBranch.TargetStepId} dalı seçildi");
+            UpdateRoadmap();
+            UpdateTaskChainViewer();
+        }
+    }
+
     #endregion
+
+    #region Mini Roadmap
+
+    /// <summary>
+    /// Roadmap panelini çiz
+    /// </summary>
+    private void pnlRoadmap_Paint(object? sender, PaintEventArgs e)
+    {
+        var g = e.Graphics;
+        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+        g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+
+        _roadmapBoxes.Clear();
+
+        if (_currentChain.Steps.Count == 0)
+        {
+            // Henüz adım yok
+            using (var font = new Font("Segoe UI", 10, FontStyle.Italic))
+            using (var brush = new SolidBrush(Color.Gray))
+            {
+                g.DrawString("Henüz adım eklenmedi", font, brush, 150, 50);
+            }
+            return;
+        }
+
+        // Şu anki adımı bul
+        var currentStepId = _currentStepNumber.ToString() + _currentBranch;
+        var currentStep = _currentChain.Steps.FirstOrDefault(s =>
+            (s.StepId == currentStepId) ||
+            (string.IsNullOrEmpty(s.StepId) && s.StepNumber == _currentStepNumber));
+
+        // Önceki adımı bul
+        TaskStep? prevStep = null;
+        if (_currentStepNumber > 1)
+        {
+            prevStep = _currentChain.Steps.FirstOrDefault(s => s.StepNumber == _currentStepNumber - 1);
+        }
+
+        // Sonraki adımları bul (dallanma varsa çoklu olabilir)
+        var nextSteps = GetNextSteps(currentStep);
+
+        int x = 20;
+        int y = 20;
+        int boxWidth = 50;
+        int boxHeight = 50;
+        int spacing = 40;
+
+        // Önceki adım
+        if (prevStep != null)
+        {
+            var box = DrawStepBox(g, prevStep, x, y, boxWidth, boxHeight, false, true);
+            _roadmapBoxes.Add(box);
+
+            // Ok çiz
+            DrawArrow(g, x + boxWidth, y + boxHeight / 2, x + spacing, y + boxHeight / 2, Color.LightBlue);
+            x += boxWidth + spacing;
+        }
+
+        // Şu anki adım
+        if (currentStep != null)
+        {
+            var box = DrawStepBox(g, currentStep, x, y, boxWidth, boxHeight, true, false);
+            _roadmapBoxes.Add(box);
+            x += boxWidth + spacing;
+        }
+
+        // Sonraki adımlar
+        if (nextSteps.Count > 0)
+        {
+            if (nextSteps.Count == 1)
+            {
+                // Tek yol
+                DrawArrow(g, x - spacing, y + boxHeight / 2, x, y + boxHeight / 2, Color.LightBlue);
+                var box = DrawStepBox(g, nextSteps[0].Step, x, y, boxWidth, boxHeight, false, nextSteps[0].IsConfigured);
+                _roadmapBoxes.Add(box);
+            }
+            else
+            {
+                // Dallanma
+                int branchY = y - 30;
+                int deltaY = 60;
+
+                for (int i = 0; i < nextSteps.Count; i++)
+                {
+                    int targetY = branchY + (i * deltaY);
+
+                    // Eğri ok çiz
+                    DrawCurvedArrow(g, x - spacing, y + boxHeight / 2, x, targetY + boxHeight / 2,
+                        nextSteps[i].IsConfigured ? Color.LightGreen : Color.Gray);
+
+                    var box = DrawStepBox(g, nextSteps[i].Step, x, targetY, boxWidth, boxHeight,
+                        false, nextSteps[i].IsConfigured);
+                    _roadmapBoxes.Add(box);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Adım kutusu çiz
+    /// </summary>
+    private RoadmapStepBox DrawStepBox(Graphics g, TaskStep step, int x, int y, int width, int height, bool isCurrent, bool isConfigured)
+    {
+        var box = new RoadmapStepBox
+        {
+            Step = step,
+            Bounds = new Rectangle(x, y, width, height),
+            IsCurrent = isCurrent,
+            IsConfigured = isConfigured
+        };
+
+        // Renk seçimi
+        Color boxColor;
+        if (!isConfigured)
+            boxColor = Color.FromArgb(60, 60, 65); // Soluk gri
+        else if (isCurrent)
+            boxColor = Color.FromArgb(0, 120, 212); // Mavi (şu anki)
+        else
+            boxColor = GetStepColor(step);
+
+        Color borderColor = isCurrent ? Color.FromArgb(100, 200, 255) : Color.FromArgb(100, 100, 105);
+
+        // Kutu çiz
+        using (var brush = new SolidBrush(boxColor))
+        using (var pen = new Pen(borderColor, isCurrent ? 3 : 2))
+        {
+            var rect = new Rectangle(x, y, width, height);
+            g.FillRectangle(brush, rect);
+            g.DrawRectangle(pen, rect);
+        }
+
+        // Adım numarası/ID yaz
+        string stepText = !string.IsNullOrEmpty(step.StepId) ? step.StepId : step.StepNumber.ToString();
+        using (var font = new Font("Segoe UI", 9, FontStyle.Bold))
+        using (var brush = new SolidBrush(isConfigured ? Color.White : Color.Gray))
+        {
+            var textSize = g.MeasureString(stepText, font);
+            g.DrawString(stepText, font, brush,
+                x + (width - textSize.Width) / 2,
+                y + (height - textSize.Height) / 2);
+        }
+
+        return box;
+    }
+
+    /// <summary>
+    /// Adım rengini belirle
+    /// </summary>
+    private Color GetStepColor(TaskStep step)
+    {
+        return step.StepType switch
+        {
+            StepType.TargetSelection => Color.FromArgb(60, 179, 113),
+            StepType.ConditionalBranch => Color.FromArgb(218, 165, 32),
+            StepType.UIElementAction => Color.FromArgb(70, 130, 180),
+            _ => Color.FromArgb(75, 75, 85)
+        };
+    }
+
+    /// <summary>
+    /// Düz ok çiz
+    /// </summary>
+    private void DrawArrow(Graphics g, int x1, int y1, int x2, int y2, Color color)
+    {
+        using (var pen = new Pen(color, 2))
+        {
+            g.DrawLine(pen, x1, y1, x2, y2);
+
+            // Ok başı
+            int arrowSize = 6;
+            PointF[] arrowHead = new PointF[3];
+            arrowHead[0] = new PointF(x2, y2);
+            arrowHead[1] = new PointF(x2 - arrowSize, y2 - arrowSize / 2);
+            arrowHead[2] = new PointF(x2 - arrowSize, y2 + arrowSize / 2);
+
+            using (var brush = new SolidBrush(color))
+            {
+                g.FillPolygon(brush, arrowHead);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Eğri ok çiz (dallanma için)
+    /// </summary>
+    private void DrawCurvedArrow(Graphics g, int x1, int y1, int x2, int y2, Color color)
+    {
+        using (var pen = new Pen(color, 2))
+        {
+            // Bezier eğrisi
+            Point start = new Point(x1, y1);
+            Point end = new Point(x2, y2);
+            Point control1 = new Point(x1 + 20, y1);
+            Point control2 = new Point(x2 - 20, y2);
+
+            g.DrawBezier(pen, start, control1, control2, end);
+
+            // Ok başı
+            int arrowSize = 6;
+            PointF[] arrowHead = new PointF[3];
+            arrowHead[0] = new PointF(x2, y2);
+            arrowHead[1] = new PointF(x2 - arrowSize, y2 - arrowSize / 2);
+            arrowHead[2] = new PointF(x2 - arrowSize, y2 + arrowSize / 2);
+
+            using (var brush = new SolidBrush(color))
+            {
+                g.FillPolygon(brush, arrowHead);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Sonraki adımları bul (dallanma dahil)
+    /// </summary>
+    private List<(TaskStep Step, bool IsConfigured)> GetNextSteps(TaskStep? currentStep)
+    {
+        var result = new List<(TaskStep Step, bool IsConfigured)>();
+
+        if (currentStep == null)
+            return result;
+
+        // Koşullu dallanma varsa, dalları ekle
+        if (currentStep.StepType == StepType.ConditionalBranch && currentStep.Condition != null)
+        {
+            foreach (var branch in currentStep.Condition.Branches)
+            {
+                if (!string.IsNullOrEmpty(branch.TargetStepId))
+                {
+                    // Bu dal için adım var mı kontrol et
+                    var branchStep = _currentChain.Steps.FirstOrDefault(s => s.StepId == branch.TargetStepId);
+
+                    if (branchStep != null)
+                    {
+                        result.Add((branchStep, true)); // Yapılandırılmış
+                    }
+                    else
+                    {
+                        // Placeholder adım oluştur (henüz yapılandırılmamış)
+                        var placeholderStep = new TaskStep
+                        {
+                            StepId = branch.TargetStepId,
+                            StepNumber = ParseStepNumber(branch.TargetStepId),
+                            Description = $"Dal: {branch.BranchName}",
+                            StepType = StepType.UIElementAction
+                        };
+                        result.Add((placeholderStep, false)); // Yapılandırılmamış
+                    }
+                }
+            }
+        }
+        else
+        {
+            // Normal akış - bir sonraki adım
+            var nextStep = _currentChain.Steps.FirstOrDefault(s => s.StepNumber == currentStep.StepNumber + 1);
+            if (nextStep != null)
+            {
+                result.Add((nextStep, true));
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// StepId'den sayısal kısmı çıkar ("4A" -> 4)
+    /// </summary>
+    private int ParseStepNumber(string stepId)
+    {
+        if (string.IsNullOrEmpty(stepId))
+            return 0;
+
+        var numPart = new string(stepId.TakeWhile(char.IsDigit).ToArray());
+        if (int.TryParse(numPart, out int num))
+            return num;
+
+        return 0;
+    }
+
+    /// <summary>
+    /// Roadmap kutucuğuna tıklama
+    /// </summary>
+    private void pnlRoadmap_MouseClick(object? sender, MouseEventArgs e)
+    {
+        foreach (var box in _roadmapBoxes)
+        {
+            if (box.Bounds.Contains(e.Location) && box.IsConfigured)
+            {
+                // Bu adıma geç
+                SwitchToStep(box.Step);
+                break;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Belirtilen adıma geç
+    /// </summary>
+    private void SwitchToStep(TaskStep step)
+    {
+        _currentStepNumber = step.StepNumber;
+
+        // StepId'den branch bilgisini çıkar
+        if (!string.IsNullOrEmpty(step.StepId))
+        {
+            var branchPart = new string(step.StepId.SkipWhile(char.IsDigit).ToArray());
+            _currentBranch = branchPart;
+        }
+        else
+        {
+            _currentBranch = "";
+        }
+
+        UpdateRoadmap();
+        LogMessage($"📍 Adım {step.StepId ?? step.StepNumber.ToString()}'e geçildi");
+    }
+
+    /// <summary>
+    /// Roadmap'i güncelle
+    /// </summary>
+    private void UpdateRoadmap()
+    {
+        pnlRoadmap.Invalidate(); // Paint event'ini tetikle
+    }
+
+    #endregion
+
+    #region Topmost Toggle
+
+    /// <summary>
+    /// Topmost toggle butonu
+    /// </summary>
+    private void btnTopmost_Click(object? sender, EventArgs e)
+    {
+        this.TopMost = !this.TopMost;
+
+        if (this.TopMost)
+        {
+            btnTopmost.Text = "📌 En Üstte (Aktif)";
+            btnTopmost.BackColor = Color.LightGreen;
+        }
+        else
+        {
+            btnTopmost.Text = "📌 En Üstte Tut";
+            btnTopmost.BackColor = SystemColors.Control;
+        }
+    }
+
+    #endregion
+}
+
+/// <summary>
+/// Roadmap'teki adım kutusu
+/// </summary>
+internal class RoadmapStepBox
+{
+    public TaskStep Step { get; set; } = null!;
+    public Rectangle Bounds { get; set; }
+    public bool IsCurrent { get; set; }
+    public bool IsConfigured { get; set; }
 }

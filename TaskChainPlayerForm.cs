@@ -663,4 +663,23 @@ public partial class TaskChainPlayerForm : Form
     {
         return MessageBox.Show(this, text, caption, buttons, icon);
     }
+
+    /// <summary>
+    /// Topmost toggle butonu
+    /// </summary>
+    private void btnTopmost_Click(object? sender, EventArgs e)
+    {
+        this.TopMost = !this.TopMost;
+
+        if (this.TopMost)
+        {
+            btnTopmost.Text = "📌 En Üstte (Aktif)";
+            btnTopmost.BackColor = Color.LightGreen;
+        }
+        else
+        {
+            btnTopmost.Text = "📌 En Üstte Tut";
+            btnTopmost.BackColor = SystemColors.Control;
+        }
+    }
 }
