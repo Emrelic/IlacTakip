@@ -305,6 +305,11 @@ public class ConditionInfo
     /// False: Normal koşullu dallanma davranışı
     /// </summary>
     public bool IsLoopTerminationMode { get; set; } = false;
+
+    /// <summary>
+    /// Bir önceki adım numarası (dallanma önerisi için)
+    /// </summary>
+    public int PreviousStepNumber { get; set; } = 0;
 }
 
 /// <summary>
@@ -349,7 +354,9 @@ public enum LocatorType
     // Smart Element Recorder için yeni tipler
     TableRowIndex,                  // Tablo ID + Satır Index
     TextContent,                    // Hücre text içeriği
-    ClassAndName                    // ClassName + Name kombinasyonu
+    ClassAndName,                   // ClassName + Name kombinasyonu
+    ParentNameAndControlType,       // Parent.Name + ControlType kombinasyonu
+    ParentAutomationIdAndControlType // Parent.AutomationId + ControlType kombinasyonu
 }
 
 /// <summary>

@@ -268,8 +268,22 @@ public partial class TaskChainPlayerForm : Form
     {
         try
         {
+            // Player formunu gizle (RecorderForm TopMost olduğu için önce gizle)
+            this.Hide();
+
             var recorderForm = new TaskChainRecorderForm();
             recorderForm.LoadChainForEditing(chain, currentStepIndex);
+
+            // RecorderForm kapandığında player'ı tekrar göstermek için event handler ekle
+            recorderForm.FormClosed += (s, e) =>
+            {
+                if (!this.IsDisposed)
+                {
+                    this.Show();
+                    this.BringToFront();
+                }
+            };
+
             recorderForm.Show();
 
             Log($"✏️ Görev zinciri düzenleme için açıldı: {chain.Name}");
@@ -648,5 +662,24 @@ public partial class TaskChainPlayerForm : Form
     private DialogResult ShowMessage(string text, string caption = "", MessageBoxButtons buttons = MessageBoxButtons.OK, MessageBoxIcon icon = MessageBoxIcon.None)
     {
         return MessageBox.Show(this, text, caption, buttons, icon);
+    }
+
+    /// <summary>
+    /// Topmost toggle butonu
+    /// </summary>
+    private void btnTopmost_Click(object? sender, EventArgs e)
+    {
+        this.TopMost = !this.TopMost;
+
+        if (this.TopMost)
+        {
+            btnTopmost.Text = "📌 En Üstte (Aktif)";
+            btnTopmost.BackColor = Color.LightGreen;
+        }
+        else
+        {
+            btnTopmost.Text = "📌 En Üstte Tut";
+            btnTopmost.BackColor = SystemColors.Control;
+        }
     }
 }

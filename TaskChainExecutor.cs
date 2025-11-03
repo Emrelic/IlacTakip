@@ -362,30 +362,9 @@ public class TaskChainExecutor
 
         Log($"Element aranıyor: {step.SelectedStrategy.Name}");
 
-        // Akıllı stratejiler için önce SmartElementRecorder ile dene
-        if (step.SelectedStrategy.RecordedElement != null)
-        {
-            var smartSuccess = await Task.Run(() =>
-            {
-                try
-                {
-                    return _smartElementPlayer.ExecuteLocatorStrategy(step.SelectedStrategy);
-                }
-                catch (Exception ex)
-                {
-                    DebugLogger.Log($"[TaskChainExecutor] Smart strategy execution error: {ex.Message}");
-                    return false;
-                }
-            }, cancellationToken);
-
-            if (smartSuccess)
-            {
-                Log("✓ Akıllı strateji ile element etkileşimi başarıyla gerçekleştirildi.");
-                return;
-            }
-
-            Log("⚠ Akıllı strateji element etkileşimi başarısız oldu, klasik aramaya dönülüyor.");
-        }
+        // DEVRE DIŞI: SmartElementRecorder koordinat kullandığı için devre dışı bırakıldı
+        // Sadece UI Automation özellikleri (AutomationId, Name, ClassName, etc.) kullanılacak
+        // SmartElementRecorder UI özelliklerini topluyor ama kullanmıyor, koordinata düşüyor - YASAK!
 
         // Elementi bul - cancellation token ile timeout uygula
         AutomationElement? element = null;
